@@ -1,11 +1,35 @@
 import tkinter as tk
 from tkinter import Tk, ttk, Text, StringVar, Entry, Frame
 
+active_scale = None  # будет указывать на текущий выбранный ползунок
+def make_focusable_scale(scale, var, step=1.0):
+    def on_click(event):
+        global active_scale
+        active_scale = (scale, var, step)
+        scale.focus_set()
+
+    scale.bind("<Button-1>", on_click)
+
+ # Привязка к ttk.Scale и переменной
+def on_arrow_key(event):
+    global active_scale
+    if active_scale is None:
+        return
+    scale, var, step = active_scale
+    value = var.get()
+    if event.keysym == "Up":
+        var.set(value + step)
+    elif event.keysym == "Down":
+        var.set(value - step)
+
 def create_gui():
     root = tk.Tk()
     root.title("Удаленное управление стендом")
     root.geometry("950x700+100+100")
     root.state('zoomed')
+
+    root.bind("<Up>", on_arrow_key)
+    root.bind("<Down>", on_arrow_key)
 
     # --- Вкладки ---
     notebook = ttk.Notebook(root)
@@ -80,28 +104,19 @@ def create_gui():
     ttk.Label(slider_frame, text="Скорость\nоб/мин").place(x=10, y=0)
     ttk.Label(slider_frame, text="Момент\nН·м").place(x=100, y=0)
 
-    # Привязка к ttk.Scale и переменной
-    def bind_arrow_keys_for_scale(scale, var, step=1.0):
-        def on_key(event):
-            value = var.get()
-            if event.keysym == "Up":
-                var.set(value + step)
-            elif event.keysym == "Down":
-                var.set(value - step)
-        scale.bind("<Up>", on_key)
-        scale.bind("<Down>", on_key)
+   
     # --- Ползунки ---
     speed_slider = ttk.Scale(slider_frame, from_=20000, to=0, variable=speed_var, orient="vertical", length=300)
     speed_slider.place(x=10, y=40)
     speed_slider.state(["disabled"])
-    speed_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
-    bind_arrow_keys_for_scale(speed_slider, speed_var, step=100)
+    speed_slider.bind("<Button-1>", lambda e: speed_slider.focus_set()) 
+    make_focusable_scale(speed_slider, speed_var, step=100)
+    
     torque_slider = ttk.Scale(slider_frame, from_=500, to=0, variable=torque_var, orient="vertical", length=300)
     torque_slider.place(x=100, y=40)
     torque_slider.state(["disabled"])
     torque_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
-    bind_arrow_keys_for_scale(torque_slider, speed_var, step=1)
-    
+    make_focusable_scale(torque_slider, torque_var, step=1)
     # --- Entry-поля ---
     speed_entry = ttk.Entry(slider_frame, textvariable=speed_var, width=6, state="disabled")
     speed_entry.place(x=10, y=350)

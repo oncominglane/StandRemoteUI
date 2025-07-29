@@ -34,7 +34,7 @@ def create_gui():
 
    # --- Контейнер с параметрами ---
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
-    params_frame.place(x=10, y=10, width=700, height=200)
+    params_frame.place(x=10, y=50, width=700, height=300)
     params = ["Скорость вращения", "Iq", "Id", "Температура статора", "Температура ротора"] # Пример строк параметров
     entry_vars = {}
     for i, param in enumerate(params):
@@ -46,7 +46,7 @@ def create_gui():
 
     # --- Контейнер с CAN сообщениями ---
     can_frame = ttk.LabelFrame(main_inner, text="Tx / Rx CAN")
-    can_frame.place(x=10, y=200, width=710, height=120)
+    can_frame.place(x=10, y=350, width=710, height=120)
     can_cells = []
     ttk.Label(can_frame, text="id", anchor="center").grid(row=0, column=1, padx=2, pady=(0, 5))
     for col in range(1, 9):
@@ -62,6 +62,75 @@ def create_gui():
             entry = Entry(can_frame, textvariable=var, width=8, justify="center")
             entry.grid(row=row+1, column=col, padx=2, pady=2)
             can_cells.append(var)  # можно потом обращаться по индексу
+
+
+    # --- Режим управления ---
+    control_mode_var = tk.StringVar()
+    ttk.Label(main_inner, text="Режим управления:").place(x=750, y=10)
+    mode_combo = ttk.Combobox(main_inner, textvariable=control_mode_var, values=["-", "Режим 1", "Режим 2"], state="readonly", width=20)
+    mode_combo.current(0)
+    mode_combo.place(x=750, y=30)
+    # --- Контейнер для ползунков ---
+    slider_frame = ttk.Frame(main_inner, width=180, height=450)
+    slider_frame.place(x=750, y=60)
+    slider_frame.pack_propagate(False)
+    speed_var = tk.DoubleVar()
+    torque_var = tk.DoubleVar()
+    # --- Подписи ---
+    ttk.Label(slider_frame, text="Скорость\nоб/мин").place(x=10, y=0)
+    ttk.Label(slider_frame, text="Момент\nН·м").place(x=100, y=0)
+
+    # Привязка к ttk.Scale и переменной
+    def bind_arrow_keys_for_scale(scale, var, step=1.0):
+        def on_key(event):
+            value = var.get()
+            if event.keysym == "Up":
+                var.set(value + step)
+            elif event.keysym == "Down":
+                var.set(value - step)
+        scale.bind("<Up>", on_key)
+        scale.bind("<Down>", on_key)
+    # --- Ползунки ---
+    speed_slider = ttk.Scale(slider_frame, from_=20000, to=0, variable=speed_var, orient="vertical", length=300)
+    speed_slider.place(x=10, y=40)
+    speed_slider.state(["disabled"])
+    speed_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
+    bind_arrow_keys_for_scale(speed_slider, speed_var, step=100)
+    torque_slider = ttk.Scale(slider_frame, from_=500, to=0, variable=torque_var, orient="vertical", length=300)
+    torque_slider.place(x=100, y=40)
+    torque_slider.state(["disabled"])
+    torque_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
+    bind_arrow_keys_for_scale(torque_slider, speed_var, step=1)
+    
+    # --- Entry-поля ---
+    speed_entry = ttk.Entry(slider_frame, textvariable=speed_var, width=6, state="disabled")
+    speed_entry.place(x=10, y=350)
+    torque_entry = ttk.Entry(slider_frame, textvariable=torque_var, width=6, state="disabled")
+    torque_entry.place(x=100, y=350)
+    # --- Показывать ползунки при выборе режима ---
+    def on_mode_change(event):
+        if control_mode_var.get() != "-":
+            speed_slider.state(["!disabled"])
+            torque_slider.state(["!disabled"])
+            speed_entry.config(state="normal")
+            torque_entry.config(state="normal")
+        else:
+            speed_slider.state(["disabled"])
+            torque_slider.state(["disabled"])
+            speed_entry.config(state="disabled")
+            torque_entry.config(state="disabled")
+    mode_combo.bind("<<ComboboxSelected>>", on_mode_change)
+   
+
+
+
+
+
+
+
+
+
+
 
 
 

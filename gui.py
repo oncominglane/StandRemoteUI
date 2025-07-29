@@ -4,17 +4,15 @@ from tkinter import Tk, ttk, Text, StringVar, Entry, Frame
 def create_gui():
     root = tk.Tk()
     root.title("Удаленное управление стендом")
-    root.geometry("950x700")
+    root.geometry("950x700+100+100")
     root.state('zoomed')
 
-     # --- Вкладки ---
+    # --- Вкладки ---
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
     # Вкладка 1: управление и параметры
     main_frame = ttk.Frame(notebook)
     notebook.add(main_frame, text="Управление")
-    main_inner = ttk.Frame(main_frame)
-    main_inner.pack(anchor="n", fill="x")  # прижать вверх
     # Вкладка 2: индикация
     ind_frame = ttk.Frame(notebook)
     notebook.add(ind_frame, text="Индикация")
@@ -22,22 +20,22 @@ def create_gui():
     log_frame = ttk.Frame(notebook)
     notebook.add(log_frame, text="Журнал")
 
-    # Вкладка 1
-    # --- Верхний блок: кнопки управления -
+    # Вкладка 1 
+    main_inner = ttk.Frame(main_frame)
+    main_inner.pack(fill="both", expand=True)
+
+    # --- Контейнер с основными кнопками ---
     control_frame = ttk.Frame(main_inner)
     control_frame.pack(padx=10, pady=10, fill="x")
     ttk.Button(control_frame, text="▶ Старт", width=15).pack(side="left", padx=5)
     ttk.Button(control_frame, text="■ Стоп", width=15).pack(side="left", padx=5)
     ttk.Button(control_frame, text="↺ Сброс", width=15).pack(side="left", padx=5)
     ttk.Button(control_frame, text="💾 Сохранить", width=15).pack(side="left", padx=5)
-    
-    # --- Средний блок: параметры (ввод + текущие значения) ---
+
+   # --- Контейнер с параметрами ---
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
-    params_frame.pack(padx=10, pady=10, fill="both", expand=True)
-    # Пример строк параметров
-    params = [
-        "Скорость вращения", "Iq", "Id", "Температура статора", "Температура ротора"
-    ]
+    params_frame.place(x=10, y=10, width=700, height=200)
+    params = ["Скорость вращения", "Iq", "Id", "Температура статора", "Температура ротора"] # Пример строк параметров
     entry_vars = {}
     for i, param in enumerate(params):
         ttk.Label(params_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)
@@ -46,9 +44,35 @@ def create_gui():
         entry.grid(row=i, column=1, padx=5, pady=5)
         entry_vars[param] = var
 
+    # --- Контейнер с CAN сообщениями ---
+    can_frame = ttk.LabelFrame(main_inner, text="Tx / Rx CAN")
+    can_frame.place(x=10, y=200, width=710, height=120)
+    can_cells = []
+    ttk.Label(can_frame, text="id", anchor="center").grid(row=0, column=1, padx=2, pady=(0, 5))
+    for col in range(1, 9):
+        ttk.Label(can_frame, text=f"data{col-1}", anchor="center").grid(row=0, column=col + 1, padx=2, pady=(0, 5))
+    ttk.Label(can_frame, text="len", anchor="center").grid(row=0, column=10, padx=2, pady=(0, 5))
+    ttk.Label(can_frame, text="flags", anchor="center").grid(row=0, column=11, padx=2, pady=(0, 5))
+    ttk.Label(can_frame, text="ts", anchor="center").grid(row=0, column=12, padx=2, pady=(0, 5))
+    ttk.Label(can_frame, text="Tx:").grid(row=1, column=0, sticky="e", padx=3)
+    ttk.Label(can_frame, text="Rx:").grid(row=2, column=0, sticky="e", padx=3)
+    for row in range(2):  # 2 строки: 0 - Tx, 1 - Rx
+        for col in range(1,13):  # 12 ячеек в строке
+            var = StringVar()
+            entry = Entry(can_frame, textvariable=var, width=8, justify="center")
+            entry.grid(row=row+1, column=col, padx=2, pady=2)
+            can_cells.append(var)  # можно потом обращаться по индексу
+
+
+
+
+
     # Вкладка 3
     log_box = tk.Text(log_frame, height=20, wrap="word")
     log_box.pack(fill="both", padx=10, pady=10, anchor="n")
+
+
+
 
     root.mainloop()
 

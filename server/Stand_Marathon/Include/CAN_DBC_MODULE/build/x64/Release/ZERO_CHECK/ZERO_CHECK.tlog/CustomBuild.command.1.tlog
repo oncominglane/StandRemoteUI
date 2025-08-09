@@ -1,0 +1,10 @@
+^C:\GVN\GUI_MARATHON\STAND_MARATHON\INCLUDE\CAN_DBC_MODULE\BUILD\CMAKEFILES\BAEF859DA98CF8099E4B74032007ABB1\GENERATE.STAMP.RULE
+setlocal
+C:\Users\s.makov\scoop\apps\cmake\current\bin\cmake.exe -SC:/gvn/GUI_Marathon/Stand_Marathon/Include/CAN_DBC_MODULE -BC:/gvn/GUI_Marathon/Stand_Marathon/Include/CAN_DBC_MODULE/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/gvn/GUI_Marathon/Stand_Marathon/Include/CAN_DBC_MODULE/build/Project.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,9 @@
+# build artifacts
+/build/
+/dist/
+/server/build/
+/server/dist/
+*.exe
+*.pkg
+*.pdb
+*.dll

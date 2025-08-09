@@ -116,7 +116,7 @@ def create_gui():
     torque_slider.place(x=100, y=40)
     torque_slider.state(["disabled"])
     torque_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
-    make_focusable_scale(torque_slider, torque_var, step=1)
+    make_focusable_scale(torque_slider, torque_var, step=0.0)
     # --- Entry-поля ---
     speed_entry = ttk.Entry(slider_frame, textvariable=speed_var, width=6, state="disabled")
     speed_entry.place(x=10, y=350)

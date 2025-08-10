@@ -1,6 +1,4 @@
 # build artifacts
-/build/
-/dist/
 /server/build/
 /server/dist/
 *.exe

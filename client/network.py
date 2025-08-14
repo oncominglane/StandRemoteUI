@@ -76,20 +76,37 @@ class WSClient:
                 await asyncio.sleep(backoff) # Ждём backoff секунд перед повторным подключением.
                 backoff = min(backoff * 2, 10.0)
 
-    def send_cmd_threadsafe(self, cmd: str):
+    def send_cmd_threadsafe(self, cmd: str): # Отправляет команду на сервер из любого потока (главного Tkinter или ещё откуда-то).
         """Без await. Можно вызывать из любого потока (в т.ч. из Tk)."""
         if not self.loop:
             self.on_error("WS: нет event loop")
-            return
+            return # Если цикл событий ещё не создан — пишем ошибку
         async def _send():
             if self.ws is None:
                 raise RuntimeError("WS не подключен")
-            await self.ws.send(json.dumps({"cmd": cmd}))
-        fut = asyncio.run_coroutine_threadsafe(_send(), self.loop)
+            await self.ws.send(json.dumps({"cmd": cmd})) #Отправляет JSON вида {"cmd": "<команда>"}.
+        fut = asyncio.run_coroutine_threadsafe(_send(), self.loop) # Запускаем _send() в чужом asyncio-цикле (self.loop) из текущего потока.
         def _cb(f):
             try:
                 f.result()
                 self.on_status(f"Отправлено: {cmd}")
             except Exception as e:
                 self.on_error(f"Ошибка отправки '{cmd}': {e}")
+        fut.add_done_callback(_cb) # Привязываем коллбэк к завершению задачи fut.send_cmd_threadsafe
+
+    def send_json_threadsafe(self, payload: dict):
+        if not self.loop:
+            self.on_error("WS: нет event loop")
+            return
+        async def _send():
+            if self.ws is None:
+                raise RuntimeError("WS не подключен")
+            await self.ws.send(json.dumps(payload))
+        fut = asyncio.run_coroutine_threadsafe(_send(), self.loop)
+        def _cb(f):
+            try:
+                f.result()
+                self.on_status(f"Отправлено: {payload.get('cmd', '<no cmd>')}")
+            except Exception as e:
+                self.on_error(f"Ошибка отправки: {e}")
         fut.add_done_callback(_cb)

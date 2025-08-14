@@ -72,10 +72,42 @@ def create_gui():
     # Доп. команды (если нужны)
     extra_frame = ttk.Frame(main_inner)
     extra_frame.pack(padx=10, pady=(0,10), fill="x")
-    for cmd in ["SendControl", "SendLimits", "SendTorque"]:
-        ttk.Button(extra_frame, text=cmd, width=15,
-                   command=lambda c=cmd: client.send_cmd_threadsafe(c)).pack(side="left", padx=5)
+#    for cmd in ["SendControl", "SendLimits", "SendTorque"]:
+#        ttk.Button(extra_frame, text=cmd, width=15,
+#                   command=lambda c=cmd: client.send_cmd_threadsafe(c)).pack(side="left", padx=5)
+    ttk.Button(
+        extra_frame, text="SendControl", width=15,
+        command=lambda: client.send_json_threadsafe({
+            "cmd": "SendControl",
+            "MotorCtrl": 1,           # пример: режим управления
+            "GearCtrl": 1,            # пример: передача
+            "Kl_15": True,            # «зажигание»
+            "Brake_active": False,
+            "TCS_active": False
+        })
+    ).pack(side="left", padx=5)
+     # SendLimits: возьмём текущий момент и скорость как M_max и n_max
+    ttk.Button(
+        extra_frame, text="SendLimits", width=15,
+        command=lambda: client.send_json_threadsafe({
+            "cmd": "SendLimits",
+            "M_max": float(torque_var.get() or 0),   # Н·м
+            "n_max": int(float(speed_var.get() or 0))# об/мин
+            # при необходимости добавь другие лимиты
+        })
+    ).pack(side="left", padx=5)
 
+    # SendTorque: берём Id/Iq из формы параметров
+    ttk.Button(
+        extra_frame, text="SendTorque", width=15,
+        command=lambda: client.send_json_threadsafe({
+            "cmd": "SendTorque",
+            "En_rem": True,                                   # удалённое управление
+            "Isd": float(entry_vars["Id"].get() or 0),        # Id
+            "Isq": float(entry_vars["Iq"].get() or 0)         # Iq
+        })
+    ).pack(side="left", padx=5)
+    
     # Параметры стенда
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
     params_frame.place(x=10, y=120, width=700, height=260)

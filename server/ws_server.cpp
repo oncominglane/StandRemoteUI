@@ -1,3 +1,8 @@
+// ws_server.cpp
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00 // Windows 10 для Boost.Asio/Beast (убирает предупреждение)
+#endif
+
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/asio.hpp>
@@ -18,10 +23,10 @@ using tcp = boost::asio::ip::tcp;
 namespace websocket = boost::beast::websocket;
 using json = nlohmann::json;
 
-DataModel model;
-CANInterface can;
+DataModel     model;
+CANInterface  can;
 ConfigManager config(model.configFilePath);
-StateMachine sm(model, can, config);
+StateMachine  sm(model, can, config);
 
 // Сериализация DataModel в JSON
 std::string serializeData() {
@@ -46,7 +51,7 @@ void do_session(tcp::socket socket) {
         ws.accept();
         std::cout << "[WS] Client connected" << std::endl;
 
-        // Поток обновлений данных
+        // Поток регулярной отправки данных клиенту
         std::thread updater([&ws]() {
             while (true) {
                 try {
@@ -55,12 +60,12 @@ void do_session(tcp::socket socket) {
                     ws.write(boost::asio::buffer(data));
                     std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 } catch (...) {
-                    break; // если клиент отключился
+                    break; // клиент отключился — выходим из потока
                 }
             }
         });
 
-        // Чтение команд
+        // Чтение и обработка команд от клиента
         for (;;) {
             boost::beast::flat_buffer buffer;
             ws.read(buffer);
@@ -68,36 +73,44 @@ void do_session(tcp::socket socket) {
             auto j = json::parse(msg);
 
             std::string cmd = j.value("cmd", "");
-            if (cmd == "Init") sm.setState(State::Init);
-            else if (cmd == "Stop") sm.setState(State::Stop);
-            else if (cmd == "Read2") sm.setState(State::Read2);
-            else if (cmd == "SaveCfg") sm.setState(State::Save_Cfg);
-            else if (cmd == "SendControl") CommandSender::sendControlCommand(can, model);
-            else if (cmd == "SendLimits") CommandSender::sendLimitCommand(can, model);
-            else if (cmd == "SendTorque") CommandSender::sendTorqueCommand(can, model);
+            if (cmd == "Init")                sm.setState(State::Init);
+            else if (cmd == "Stop")           sm.setState(State::Stop);
+            else if (cmd == "Read2")          sm.setState(State::Read2);
+            else if (cmd == "SaveCfg")        sm.setState(State::Save_Cfg);
+            else if (cmd == "SendControl")    CommandSender::sendControlCommand(can, model);
+            else if (cmd == "SendLimits")     CommandSender::sendLimitCommand(can, model);
+            else if (cmd == "SendTorque")     CommandSender::sendTorqueCommand(can, model);
         }
 
         updater.join();
 
-    } catch (std::exception const& e) {
+    } catch (const std::exception& e) {
         std::cerr << "[Error] " << e.what() << std::endl;
     }
 }
 
 int main() {
+    // Загрузка конфигурации и перевод в исходное состояние
     config.load(model);
     sm.setState(State::Idle);
 
     try {
         boost::asio::io_context ioc;
         tcp::acceptor acceptor{ioc, {tcp::v4(), 9000}};
-        std::cout << "✅ WebSocket server running at ws://0.0.0.0:9000" << std::endl;
+        std::cout << "WebSocket server running at ws://0.0.0.0:9000" << std::endl;
+
         for (;;) {
             tcp::socket socket{ioc};
             acceptor.accept(socket);
             std::thread(&do_session, std::move(socket)).detach();
         }
-    } catch (std::exception const& e) {
+    } catch (const std::exception& e) {
         std::cerr << "[Fatal] " << e.what() << std::endl;
     }
 }
+
+
+
+
+
+

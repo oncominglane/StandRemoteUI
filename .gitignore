@@ -1,7 +1,1 @@
 # build artifacts
-/server/build/
-/server/dist/
-*.exe
-*.pkg
-*.pdb
-*.dll

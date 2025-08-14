@@ -1,0 +1,4 @@
+C:/gvn/GUI_Marathon/build/CMakeFiles/Stand_Marathon.dir
+C:/gvn/GUI_Marathon/build/CMakeFiles/MarathonWS.dir
+C:/gvn/GUI_Marathon/build/CMakeFiles/ALL_BUILD.dir
+C:/gvn/GUI_Marathon/build/CMakeFiles/ZERO_CHECK.dir

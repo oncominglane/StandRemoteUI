@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/gvn/GUI_Marathon/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

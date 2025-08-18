@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import Tk, ttk, Text, StringVar, Entry, Frame
+import json
 
 from network import WSClient
 WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
@@ -69,6 +70,44 @@ def create_gui():
     ttk.Button(control_frame, text="💾 Сохранить", width=15,
                command=lambda: client.send_cmd_threadsafe("SaveCfg")).pack(side="left", padx=5)
 
+        # ====== Блок "Токи (Id/Iq)" ======
+    currents_frame = ttk.LabelFrame(main_inner, text="Токи (Id/Iq)")
+    currents_frame.place(x=10, y=120, width=340, height=120)
+
+    En_rem_var = tk.IntVar(value=1)
+    Id_var = tk.StringVar(value="-0.5")
+    Iq_var = tk.StringVar(value="0.0")
+
+    ttk.Checkbutton(currents_frame, text="Удалённое управление (En_rem)", variable=En_rem_var)\
+        .grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=6)
+
+    ttk.Label(currents_frame, text="Id [A]").grid(row=1, column=0, sticky="e", padx=6, pady=6)
+    ttk.Entry(currents_frame, width=10, textvariable=Id_var).grid(row=1, column=1, sticky="w")
+
+    ttk.Label(currents_frame, text="Iq [A]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
+    ttk.Entry(currents_frame, width=10, textvariable=Iq_var).grid(row=1, column=3, sticky="w")
+
+    # ====== Блок "Лимиты" ======
+    limits_frame = ttk.LabelFrame(main_inner, text="Лимиты")
+    limits_frame.place(x=360, y=120, width=360, height=120)
+
+    M_min_var      = tk.StringVar(value="-50.0")
+    M_max_var      = tk.StringVar(value="400.0")
+    M_grad_max_var = tk.StringVar(value="50")
+    n_max_var      = tk.StringVar(value="1000")
+
+    ttk.Label(limits_frame, text="M_min [Н·м]").grid(row=0, column=0, sticky="e", padx=6, pady=6)
+    ttk.Entry(limits_frame, width=10, textvariable=M_min_var).grid(row=0, column=1, sticky="w")
+
+    ttk.Label(limits_frame, text="M_max [Н·м]").grid(row=0, column=2, sticky="e", padx=6, pady=6)
+    ttk.Entry(limits_frame, width=10, textvariable=M_max_var).grid(row=0, column=3, sticky="w")
+
+    ttk.Label(limits_frame, text="M_grad_max").grid(row=1, column=0, sticky="e", padx=6, pady=6)
+    ttk.Entry(limits_frame, width=10, textvariable=M_grad_max_var).grid(row=1, column=1, sticky="w")
+
+    ttk.Label(limits_frame, text="n_max [об/мин]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
+    ttk.Entry(limits_frame, width=10, textvariable=n_max_var).grid(row=1, column=3, sticky="w")
+
     # Доп. команды (если нужны)
     extra_frame = ttk.Frame(main_inner)
     extra_frame.pack(padx=10, pady=(0,10), fill="x")
@@ -109,9 +148,10 @@ def create_gui():
     ).pack(side="left", padx=5)
     
     # Параметры стенда
+    # Параметры стенда (оставим без Id/Iq, чтобы не дублировать)
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
-    params_frame.place(x=10, y=120, width=700, height=260)
-    params = ["Скорость вращения", "Iq", "Id", "Температура статора", "Температура ротора"]
+    params_frame.place(x=10, y=260, width=700, height=200)
+    params = ["Скорость вращения", "Температура статора", "Температура ротора"]
     entry_vars = {}
     for i, param in enumerate(params):
         ttk.Label(params_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)

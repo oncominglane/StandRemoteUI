@@ -11,8 +11,9 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <type_traits>
 
-// Твои заголовки
+// мои заголовки
 #include "DataModel.h"
 #include "StateMachine.h"
 #include "CommandSender.h"
@@ -27,6 +28,38 @@ DataModel     model;
 CANInterface  can;
 ConfigManager config(model.configFilePath);
 StateMachine  sm(model, can, config);
+
+// утилита: присвоить поле из JSON, если ключ есть
+template<class T>
+inline void set_if_present(const json& j, const char* key, T& target) {
+    if (j.contains(key) && !j.at(key).is_null()) {
+        target = j.at(key).get<T>();
+    }
+}
+
+// применить параметры управления (для "SendControl")
+static void apply_control_fields(const json& j) {
+    set_if_present(j, "MotorCtrl",    model.MotorCtrl);
+    set_if_present(j, "GearCtrl",     model.GearCtrl);
+    set_if_present(j, "Kl_15",        model.Kl_15);
+    set_if_present(j, "Brake_active", model.Brake_active);
+    set_if_present(j, "TCS_active",   model.TCS_active);
+}
+
+// применить лимиты (для "SendLimits")
+static void apply_limit_fields(const json& j) {
+    set_if_present(j, "M_max",       model.M_max);
+    set_if_present(j, "M_min",       model.M_min);
+    set_if_present(j, "M_grad_max",  model.M_grad_max);
+    set_if_present(j, "n_max",       model.n_max);
+}
+
+// применить Id/Iq и прочее удалённое управление (для "SendTorque")
+static void apply_torque_fields(const json& j) {
+    set_if_present(j, "En_rem", model.En_rem);
+    set_if_present(j, "Isd",    model.Isd);
+    set_if_present(j, "Isq",    model.Isq);
+}
 
 // Сериализация DataModel в JSON
 std::string serializeData() {
@@ -66,26 +99,42 @@ void do_session(tcp::socket socket) {
         });
 
         // Чтение и обработка команд от клиента
+        // цикл приёма команд
         for (;;) {
             boost::beast::flat_buffer buffer;
             ws.read(buffer);
-            std::string msg = boost::beast::buffers_to_string(buffer.data());
-            auto j = json::parse(msg);
+            const std::string msg = boost::beast::buffers_to_string(buffer.data());
+            const json j = json::parse(msg);
 
-            std::string cmd = j.value("cmd", "");
-            if (cmd == "Init")                sm.setState(State::Init);
-            else if (cmd == "Stop")           sm.setState(State::Stop);
-            else if (cmd == "Read2")          sm.setState(State::Read2);
-            else if (cmd == "SaveCfg")        sm.setState(State::Save_Cfg);
-            else if (cmd == "SendControl")    CommandSender::sendControlCommand(can, model);
-            else if (cmd == "SendLimits")     CommandSender::sendLimitCommand(can, model);
-            else if (cmd == "SendTorque")     CommandSender::sendTorqueCommand(can, model);
+            const std::string cmd = j.value("cmd", "");
+            if (cmd == "Init") {
+                sm.setState(State::Init);
+            } else if (cmd == "Stop") {
+                sm.setState(State::Stop);
+            } else if (cmd == "Read2") {
+                sm.setState(State::Read2);
+            } else if (cmd == "SaveCfg") {
+                config.save(model);
+            } else if (cmd == "SendControl") {
+                apply_control_fields(j);   // обновили модель из JSON
+                config.save(model);        // сохранили конфиг
+                CommandSender::sendControlCommand(can, model); // отправили кадр
+            } else if (cmd == "SendLimits") {
+                apply_limit_fields(j);
+                config.save(model);
+                CommandSender::sendLimitCommand(can, model);
+            } else if (cmd == "SendTorque") {
+                apply_torque_fields(j);
+                config.save(model);
+                CommandSender::sendTorqueCommand(can, model);
+            }
+            // при необходимости можно добавить ответ-ACK через ws.write(...)
+            // но тогда нужно синхронизировать записи с updater'ом (strand/мьютекс)
         }
 
         updater.join();
-
     } catch (const std::exception& e) {
-        std::cerr << "[Error] " << e.what() << std::endl;
+        std::cerr << "[WS error] " << e.what() << "\n";
     }
 }
 

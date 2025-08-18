@@ -1,6 +1,30 @@
 #include "CANInterface.h"
 #include <iostream>
 
+#include <cstdio>
+#include <string>
+
+static inline bool WS_CAN_LOG() {
+    static int flag = -1;
+    if (flag < 0) {
+        const char* v = std::getenv("WS_LOG_CAN");
+        flag = (v && *v == '1') ? 1 : 0;
+    }
+    return flag == 1;
+}
+
+static inline std::string to_hex(const uint8_t* data, int len) {
+    static const char* H = "0123456789ABCDEF";
+    std::string s; s.reserve(len * 3);
+    for (int i = 0; i < len; ++i) {
+        uint8_t b = data[i];
+        s.push_back(H[b >> 4]);
+        s.push_back(H[b & 0x0F]);
+        if (i + 1 < len) s.push_back(' ');
+    }
+    return s;
+}
+
 CANInterface::CANInterface() : handle(PCAN_NONEBUS) {}
 
 CANInterface::~CANInterface() {
@@ -81,9 +105,14 @@ bool CANInterface::send(uint32_t id, const uint8_t* data, uint8_t length) {
     msg.LEN = length;
     std::copy(data, data + length, msg.DATA);
 
+    if (WS_CAN_LOG()) {
+        std::printf("[CAN TX] ID=0x%03X DLC=%d DATA=%s\n",
+                    (unsigned)id, (int)length, to_hex(data, length).c_str());
+    }
+    
     TPCANStatus status = CAN_Write(handle, &msg);
     if (status != PCAN_ERROR_OK) {
-        std::cerr << "CAN send failed: " << getErrorText(status) << std::endl;
+        if (WS_CAN_LOG()) std::printf("[CAN TX][ERR] status=0x%08X\n", (unsigned)status);
         return false;
     }
     return true;

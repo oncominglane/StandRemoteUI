@@ -9,23 +9,66 @@ from utils import make_focusable_scale, on_arrow_key
 active_scale = None  # текущий выбранный ползунок
 
 def create_gui():
-
     root = tk.Tk()
     root.title("Удаленное управление стендом")
     root.geometry("950x700+100+100")
-    #try:
-    #    root.state('zoomed')
-    #except Exception:
-    #    pass
-
+    
     # Коллбеки для WS с безопасным обновлением из главного потока
     log_box = tk.Text(root, height=10, wrap="word")
     def ui_log(msg):
         log_box.insert("end", msg.strip() + "\n")
         log_box.see("end")
 
+    # Глобальные переменные для CAN данных
+    can_rx_data = [StringVar() for _ in range(12)]  # 12 полей для Rx CAN
+    can_tx_data = [StringVar() for _ in range(12)]  # 12 полей для Tx CAN
+
     def on_message(msg):
         root.after(0, lambda: ui_log(f"[RX] {msg}"))
+        
+        try:
+            # Пытаемся разобрать сообщение как JSON
+            data = json.loads(msg)
+            
+            # Если это CAN сообщение, обновляем соответствующие поля
+            if data.get("type") == "can_frame":
+                frame_data = data.get("data", {})
+                direction = frame_data.get("direction", "")
+                
+                if direction == "rx":
+                    # Обновляем Rx поля
+                    for i in range(8):  # data0-data7
+                        if f"data{i}" in frame_data:
+                            can_rx_data[i+1].set(str(frame_data[f"data{i}"]))
+                    
+                    # Обновляем остальные поля
+                    if "id" in frame_data:
+                        can_rx_data[0].set(str(frame_data["id"]))
+                    if "len" in frame_data:
+                        can_rx_data[9].set(str(frame_data["len"]))
+                    if "flags" in frame_data:
+                        can_rx_data[10].set(str(frame_data["flags"]))
+                    if "ts" in frame_data:
+                        can_rx_data[11].set(str(frame_data["ts"]))
+                        
+                elif direction == "tx":
+                    # Обновляем Tx поля (аналогично)
+                    for i in range(8):
+                        if f"data{i}" in frame_data:
+                            can_tx_data[i+1].set(str(frame_data[f"data{i}"]))
+                    
+                    if "id" in frame_data:
+                        can_tx_data[0].set(str(frame_data["id"]))
+                    if "len" in frame_data:
+                        can_tx_data[9].set(str(frame_data["len"]))
+                    if "flags" in frame_data:
+                        can_tx_data[10].set(str(frame_data["flags"]))
+                    if "ts" in frame_data:
+                        can_tx_data[11].set(str(frame_data["ts"]))
+                        
+        except json.JSONDecodeError:
+            # Не JSON сообщение, просто логируем
+            pass
 
     def on_status(msg):
         root.after(0, lambda: ui_log(f"[WS] {msg}"))
@@ -37,7 +80,6 @@ def create_gui():
     client = WSClient(WS_URL, on_message, on_status, on_error)
     client.start()
     
-
     root.protocol("WM_DELETE_WINDOW", lambda: (client.stop(), root.destroy()))
 
     root.bind("<Up>", on_arrow_key)
@@ -70,7 +112,7 @@ def create_gui():
     ttk.Button(control_frame, text="💾 Сохранить", width=15,
                command=lambda: client.send_cmd_threadsafe("SaveCfg")).pack(side="left", padx=5)
 
-        # ====== Блок "Токи (Id/Iq)" ======
+    # ====== Блок "Токи (Id/Iq)" ======
     currents_frame = ttk.LabelFrame(main_inner, text="Токи (Id/Iq)")
     currents_frame.place(x=10, y=120, width=340, height=120)
 
@@ -108,47 +150,42 @@ def create_gui():
     ttk.Label(limits_frame, text="n_max [об/мин]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
     ttk.Entry(limits_frame, width=10, textvariable=n_max_var).grid(row=1, column=3, sticky="w")
 
-    # Доп. команды (если нужны)
+    # Доп. команды
     extra_frame = ttk.Frame(main_inner)
     extra_frame.pack(padx=10, pady=(0,10), fill="x")
-#    for cmd in ["SendControl", "SendLimits", "SendTorque"]:
-#        ttk.Button(extra_frame, text=cmd, width=15,
-#                   command=lambda c=cmd: client.send_cmd_threadsafe(c)).pack(side="left", padx=5)
+
     ttk.Button(
         extra_frame, text="SendControl", width=15,
         command=lambda: client.send_json_threadsafe({
             "cmd": "SendControl",
-            "MotorCtrl": 1,           # пример: режим управления
-            "GearCtrl": 1,            # пример: передача
-            "Kl_15": True,            # «зажигание»
+            "MotorCtrl": 1,
+            "GearCtrl": 1,
+            "Kl_15": True,
             "Brake_active": False,
             "TCS_active": False
         })
     ).pack(side="left", padx=5)
-     # SendLimits: возьмём текущий момент и скорость как M_max и n_max
+
     ttk.Button(
         extra_frame, text="SendLimits", width=15,
         command=lambda: client.send_json_threadsafe({
             "cmd": "SendLimits",
-            "M_max": float(torque_var.get() or 0),   # Н·м
-            "n_max": int(float(speed_var.get() or 0))# об/мин
-            # при необходимости добавь другие лимиты
+            "M_max": float(torque_var.get() or 0),
+            "n_max": int(float(speed_var.get() or 0))
         })
     ).pack(side="left", padx=5)
 
-    # SendTorque: берём Id/Iq из формы параметров
     ttk.Button(
         extra_frame, text="SendTorque", width=15,
         command=lambda: client.send_json_threadsafe({
             "cmd": "SendTorque",
-            "En_rem": True,                                   # удалённое управление
-            "Isd": float(entry_vars["Id"].get() or 0),        # Id
-            "Isq": float(entry_vars["Iq"].get() or 0)         # Iq
+            "En_rem": True,
+            "Isd": float(Id_var.get() or 0),
+            "Isq": float(Iq_var.get() or 0)
         })
     ).pack(side="left", padx=5)
     
     # Параметры стенда
-    # Параметры стенда (оставим без Id/Iq, чтобы не дублировать)
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
     params_frame.place(x=10, y=260, width=700, height=200)
     params = ["Скорость вращения", "Температура статора", "Температура ротора"]
@@ -160,24 +197,27 @@ def create_gui():
         entry.grid(row=i, column=1, padx=5, pady=5)
         entry_vars[param] = var
 
-    # CAN
+    # CAN - используем заранее созданные переменные
     can_frame = ttk.LabelFrame(main_inner, text="Tx / Rx CAN")
     can_frame.place(x=10, y=390, width=710, height=140)
-    can_cells = []
-    ttk.Label(can_frame, text="id", anchor="center").grid(row=0, column=1, padx=2, pady=(0, 5))
-    for col in range(1, 9):
-        ttk.Label(can_frame, text=f"data{col-1}", anchor="center").grid(row=0, column=col + 1, padx=2, pady=(0, 5))
-    ttk.Label(can_frame, text="len", anchor="center").grid(row=0, column=10, padx=2, pady=(0, 5))
-    ttk.Label(can_frame, text="flags", anchor="center").grid(row=0, column=11, padx=2, pady=(0, 5))
-    ttk.Label(can_frame, text="ts", anchor="center").grid(row=0, column=12, padx=2, pady=(0, 5))
+    
+    # Заголовки
+    headers = ["id"] + [f"data{i}" for i in range(8)] + ["len", "flags", "ts"]
+    for col, header in enumerate(headers):
+        ttk.Label(can_frame, text=header, anchor="center", width=8).grid(row=0, column=col+1, padx=2, pady=(0, 5))
+    
     ttk.Label(can_frame, text="Tx:").grid(row=1, column=0, sticky="e", padx=3)
     ttk.Label(can_frame, text="Rx:").grid(row=2, column=0, sticky="e", padx=3)
-    for row in range(2):
-        for col in range(1,13):
-            var = StringVar()
-            entry = Entry(can_frame, textvariable=var, width=8, justify="center")
-            entry.grid(row=row+1, column=col, padx=2, pady=2)
-            can_cells.append(var)
+    
+    # Поля Tx
+    for col in range(12):
+        entry = Entry(can_frame, textvariable=can_tx_data[col], width=8, justify="center", state="readonly")
+        entry.grid(row=1, column=col+1, padx=2, pady=2)
+    
+    # Поля Rx
+    for col in range(12):
+        entry = Entry(can_frame, textvariable=can_rx_data[col], width=8, justify="center", state="readonly")
+        entry.grid(row=2, column=col+1, padx=2, pady=2)
 
     # Режим управления + ползунки
     control_mode_var = tk.StringVar()
@@ -225,7 +265,6 @@ def create_gui():
     log_box.pack(in_=log_frame, fill="both", padx=10, pady=10, expand=True)
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     create_gui()

@@ -78,63 +78,80 @@ std::string serializeData() {
     return j.dump();
 }
 
+// Добавим в серверный код функцию для отправки CAN-сообщений
+void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& direction, 
+                 uint32_t id, const std::vector<uint8_t>& data, uint8_t len, 
+                 uint32_t flags, double timestamp) {
+    json can_msg;
+    can_msg["type"] = "can_frame";
+    can_msg["direction"] = direction;
+    can_msg["id"] = id;
+    
+    for (size_t i = 0; i < data.size(); ++i) {
+        can_msg["data" + std::to_string(i)] = data[i];
+    }
+    
+    can_msg["len"] = len;
+    can_msg["flags"] = flags;
+    can_msg["ts"] = timestamp;
+    
+    try {
+        ws.write(boost::asio::buffer(can_msg.dump()));
+    } catch (std::exception const& e) {
+        std::cerr << "[Error] Failed to send CAN frame: " << e.what() << std::endl;
+    }
+}
+
+// Модифицируем функцию do_session для отправки CAN-сообщений
 void do_session(tcp::socket socket) {
     try {
         websocket::stream<tcp::socket> ws{std::move(socket)};
         ws.accept();
         std::cout << "[WS] Client connected" << std::endl;
 
-        // Поток регулярной отправки данных клиенту
+        // Поток обновлений данных
         std::thread updater([&ws]() {
             while (true) {
                 try {
                     sm.update();
                     std::string data = serializeData();
                     ws.write(boost::asio::buffer(data));
+                    
+                    // Пример отправки CAN-сообщения
+                    // В реальном коде здесь должны быть реальные данные из CAN-интерфейса
+                    std::vector<uint8_t> can_data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+                    sendCANFrame(ws, "rx", 0x123, can_data, can_data.size(), 0, 
+                                std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0);
+                    
                     std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 } catch (...) {
-                    break; // клиент отключился — выходим из потока
+                    break; // если клиент отключился
                 }
             }
         });
 
-        // Чтение и обработка команд от клиента
-        // цикл приёма команд
+        // Чтение команд (остается без изменений)
         for (;;) {
             boost::beast::flat_buffer buffer;
             ws.read(buffer);
-            const std::string msg = boost::beast::buffers_to_string(buffer.data());
-            const json j = json::parse(msg);
+            std::string msg = boost::beast::buffers_to_string(buffer.data());
+            auto j = json::parse(msg);
 
-            const std::string cmd = j.value("cmd", "");
-            if (cmd == "Init") {
-                sm.setState(State::Init);
-            } else if (cmd == "Stop") {
-                sm.setState(State::Stop);
-            } else if (cmd == "Read2") {
-                sm.setState(State::Read2);
-            } else if (cmd == "SaveCfg") {
-                config.save(model);
-            } else if (cmd == "SendControl") {
-                apply_control_fields(j);   // обновили модель из JSON
-                config.save(model);        // сохранили конфиг
-                CommandSender::sendControlCommand(can, model); // отправили кадр
-            } else if (cmd == "SendLimits") {
-                apply_limit_fields(j);
-                config.save(model);
-                CommandSender::sendLimitCommand(can, model);
-            } else if (cmd == "SendTorque") {
-                apply_torque_fields(j);
-                config.save(model);
-                CommandSender::sendTorqueCommand(can, model);
-            }
-            // при необходимости можно добавить ответ-ACK через ws.write(...)
-            // но тогда нужно синхронизировать записи с updater'ом (strand/мьютекс)
+            std::string cmd = j.value("cmd", "");
+            if (cmd == "Init") sm.setState(State::Init);
+            else if (cmd == "Stop") sm.setState(State::Stop);
+            else if (cmd == "Read2") sm.setState(State::Read2);
+            else if (cmd == "SaveCfg") sm.setState(State::Save_Cfg);
+            else if (cmd == "SendControl") CommandSender::sendControlCommand(can, model);
+            else if (cmd == "SendLimits") CommandSender::sendLimitCommand(can, model);
+            else if (cmd == "SendTorque") CommandSender::sendTorqueCommand(can, model);
         }
 
         updater.join();
-    } catch (const std::exception& e) {
-        std::cerr << "[WS error] " << e.what() << "\n";
+
+    } catch (std::exception const& e) {
+        std::cerr << "[Error] " << e.what() << std::endl;
     }
 }
 

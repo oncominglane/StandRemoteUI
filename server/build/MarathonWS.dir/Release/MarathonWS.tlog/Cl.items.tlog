@@ -1,6 +1,0 @@
-C:\gvn\StandRemoteUI\server\ws_server.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\ws_server.obj
-C:\gvn\StandRemoteUI\server\Stand_Marathon\src\CANInterface.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\CANInterface.obj
-C:\gvn\StandRemoteUI\server\Stand_Marathon\src\CommandSender.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\CommandSender.obj
-C:\gvn\StandRemoteUI\server\Stand_Marathon\src\ConfigManager.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\ConfigManager.obj
-C:\gvn\StandRemoteUI\server\Stand_Marathon\src\MarathonLogic.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\MarathonLogic.obj
-C:\gvn\StandRemoteUI\server\Stand_Marathon\src\StateMachine.cpp;C:\gvn\StandRemoteUI\server\build\MarathonWS.dir\Release\StateMachine.obj

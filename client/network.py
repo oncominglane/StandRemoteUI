@@ -20,6 +20,8 @@ class WSClient:
         self.ws = None  # активное соединение websockets.connect(...) (или None, если нет подключения).
         self._running = threading.Event()  # потокобезопасный флаг («работать/остановиться»).
         self._running.clear()
+        self._connected_evt = threading.Event()
+        self._connected_evt.clear()
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -30,12 +32,32 @@ class WSClient:
 
     def stop(self):
         self._running.clear()
+        # аккуратно закрываем вебсокет перед остановкой цикла
+        if self.loop and self.ws:
+            try:
+                fut = asyncio.run_coroutine_threadsafe(
+                    self.ws.close(code=1000, reason="client stop"), self.loop
+                )
+                fut.result(timeout=1.0)
+            except Exception:
+                pass
         if self.loop and self.loop.is_running():
             def _stop():
                 for task in asyncio.all_tasks(loop=self.loop):
-                    task.cancel() # отменяем все активные задачи в loop
-                self.loop.stop() # останавливаем цикл loop
-            self.loop.call_soon_threadsafe(_stop) # просим loop в другом потоке безопасно выполнить _stop().
+                    task.cancel()
+                self.loop.stop()
+            self.loop.call_soon_threadsafe(_stop)
+        if self.thread:
+            self.thread.join(timeout=2.0)
+        try:
+            if self.loop:
+                self.loop.close()
+        except Exception:
+            pass
+        self.ws = None
+        self.loop = None
+        self.thread = None
+        self._connected_evt.clear()
 
     def _run_loop(self):
         self.loop = asyncio.new_event_loop() # Создаём новый asyncio-цикл событий 
@@ -53,28 +75,30 @@ class WSClient:
             self.loop.close()
 
     async def _connect_forever(self):
-        backoff = 1.0 # начальное время ожидания перед повторным подключением
-        while self._running.is_set(): # пока флаг _running установлен, пытаемся держать соединение
+        backoff = 1.0
+        while self._running.is_set():
             try:
-                self.on_status(f"Подключение к {self.url}...")
-                async with websockets.connect(self.url) as ws: # открываем WebSocket-соединение
-                    self.ws = ws # сохраняем ссылку на соединение
+                self.on_status(f"Подключение к {self.url}.")
+                async with websockets.connect(self.url, ping_interval=20, ping_timeout=20, close_timeout=1) as ws:
+                    self.ws = ws
                     self.on_status("WS подключен")
+                    self._connected_evt.set()
                     backoff = 1.0
                     while self._running.is_set():
                         msg = await ws.recv()
-                        self.on_message(msg)# получаем сообщения из WebSocket
-
+                        self.on_message(msg)
             except asyncio.CancelledError:
                 break
-
             except Exception as e:
                 self.on_error(f"WS ошибка: {e}")
                 self.on_status("WS отключен")
                 self.ws = None
-                # экспоненциальный бэкофф
-                await asyncio.sleep(backoff) # Ждём backoff секунд перед повторным подключением.
+                self._connected_evt.clear()
+                await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 10.0)
+
+    def is_connected(self) -> bool:
+        return self._connected_evt.is_set()
 
     def send_cmd_threadsafe(self, cmd: str): # Отправляет команду на сервер из любого потока (главного Tkinter или ещё откуда-то).
         """Без await. Можно вызывать из любого потока (в т.ч. из Tk)."""
@@ -93,6 +117,7 @@ class WSClient:
             except Exception as e:
                 self.on_error(f"Ошибка отправки '{cmd}': {e}")
         fut.add_done_callback(_cb) # Привязываем коллбэк к завершению задачи fut.send_cmd_threadsafe
+        return fut
 
     def send_json_threadsafe(self, payload: dict):
         if not self.loop:
@@ -110,3 +135,4 @@ class WSClient:
             except Exception as e:
                 self.on_error(f"Ошибка отправки: {e}")
         fut.add_done_callback(_cb)
+        return fut

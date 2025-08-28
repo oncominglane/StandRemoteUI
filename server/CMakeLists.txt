@@ -51,8 +51,8 @@ endif()
 # Выбираем корректную x64 DLL PCANBasic и копируем рядом с exe
 # Сначала пробуем DLL из репозитория, если нет — из установленного PCAN-Basic
 if(CMAKE_SIZEOF_VOID_P EQUAL 8) # x64 сборка
-    if(EXISTS "C:/Users/n.tulupov/Desktop/StandRemoteUI/server/Stand_Marathon/lib/x64/PCANBasic.dll")
-        set(PCANBASIC_DLL "C:/Users/n.tulupov/Desktop/StandRemoteUI/server/Stand_Marathon/lib/x64/PCANBasic.dll")
+    if(EXISTS ${CMAKE_SOURCE_DIR}/Stand_Marathon/lib/x64/PCANBasic.dll)
+        set(PCANBASIC_DLL ${CMAKE_SOURCE_DIR}/Stand_Marathon/lib/x64/PCANBasic.dll)
     elseif(EXISTS "C:/Program Files/PEAK-System/PCAN-Basic/Win64/PCANBasic.dll")
         set(PCANBASIC_DLL "C:/Program Files/PEAK-System/PCAN-Basic/Win64/PCANBasic.dll")
     else()

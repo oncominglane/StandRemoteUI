@@ -37,11 +37,12 @@ void StateMachine::handleInit() {
     }
 }
 
-void StateMachine::handleRead2() {
+CANMessage StateMachine::handleRead2() {
     CANMessage msg;
     while (canInterface.receive(msg)) {
         MarathonLogic::updateFromCAN(msg, data);
     }
+    return msg;
 }
 
 

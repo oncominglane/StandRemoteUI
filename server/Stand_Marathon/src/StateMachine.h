@@ -28,7 +28,7 @@ private:
 
     void handleIdle();
     void handleInit();
-    void handleRead2();
+    CANMessage handleRead2();
     void handleStop();
     void handleSaveCfg();
     void handleReadCfg();

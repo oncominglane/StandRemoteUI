@@ -102,6 +102,33 @@ void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& directi
     }
 }
 
+void handleCommand(const json& j) {
+    std::string cmd = j.value("cmd", "");
+
+    if (cmd == "Init") {
+        sm.setState(State::Init);
+    } else if (cmd == "Stop") {
+        sm.setState(State::Stop);
+    } else if (cmd == "Read2") {
+        sm.setState(State::Read2);
+    } else if (cmd == "SaveCfg") {
+        sm.setState(State::Save_Cfg);
+    } else if (cmd == "SendControl") {
+        apply_control_fields(j);
+        CommandSender::sendControlCommand(can, model);
+    } else if (cmd == "SendLimits") {
+        apply_limit_fields(j);
+        CommandSender::sendLimitCommand(can, model);
+    } else if (cmd == "SendTorque") {
+        std::cout << "ABOBA" << std::endl;
+        apply_torque_fields(j);
+        CommandSender::sendTorqueCommand(can, model);
+    } else {
+        std::cerr << "[Warn] Unknown command: " << cmd << std::endl;
+    }
+}
+
+
 // Модифицируем функцию do_session для отправки CAN-сообщений
 void do_session(tcp::socket socket) {
     try {
@@ -139,13 +166,7 @@ void do_session(tcp::socket socket) {
             auto j = json::parse(msg);
 
             std::string cmd = j.value("cmd", "");
-            if (cmd == "Init") sm.setState(State::Init);
-            else if (cmd == "Stop") sm.setState(State::Stop);
-            else if (cmd == "Read2") sm.setState(State::Read2);
-            else if (cmd == "SaveCfg") sm.setState(State::Save_Cfg);
-            else if (cmd == "SendControl") CommandSender::sendControlCommand(can, model);
-            else if (cmd == "SendLimits") CommandSender::sendLimitCommand(can, model);
-            else if (cmd == "SendTorque") CommandSender::sendTorqueCommand(can, model);
+            handleCommand(j);
         }
 
         updater.join();

@@ -20,6 +20,11 @@ struct DataModel {
     bool TCS_active = false;       // TCS
     uint8_t MotorCtrl = 0;         // Режим управления
     uint8_t GearCtrl = 0;          // Коробка передач
+    // === Добавить в секцию "Управление" ===
+    float M_desired = 0.0f;           // Желаемый момент (Nm)
+    uint8_t SurgeDamperState = 0;     // Состояние демпфера
+    uint8_t MCU_RequestedState = 0;   // MCU requested state
+
 
     // === Ограничения ===
     float M_max = 10.0f;           // [Нм]
@@ -48,6 +53,8 @@ struct DataModel {
     float MCU_TempCurrStr1 = 0.0f;
     float MCU_TempCurrStr2 = 0.0f;
     float MCU_TempCurrCool = 0.0f;
+
+    float TrqThresholdDampgCtl = 0.0f;
 
     // === Статусы ===
     uint8_t MCU_Status = 0;        // MCU-Status

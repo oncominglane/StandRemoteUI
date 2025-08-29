@@ -64,7 +64,6 @@ def create_gui():
             can_tx_data[11].set(str(frame_data.get("ts", "")))
 
     def handle_model_data(data):
-        print(data)
         # Пример соответствия полей из JSON к GUI
         if "ns" in data:
             entry_vars["Скорость вращения"].set(str(data["ns"]))

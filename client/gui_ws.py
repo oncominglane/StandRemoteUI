@@ -27,48 +27,89 @@ def create_gui():
         root.after(0, lambda: ui_log(f"[RX] {msg}"))
         
         try:
-            # Пытаемся разобрать сообщение как JSON
             data = json.loads(msg)
-            
-            # Если это CAN сообщение, обновляем соответствующие поля
+
             if data.get("type") == "can_frame":
-                frame_data = data.get("data", {})
-                direction = frame_data.get("direction", "")
-                
-                if direction == "rx":
-                    # Обновляем Rx поля
-                    for i in range(8):  # data0-data7
-                        if f"data{i}" in frame_data:
-                            can_rx_data[i+1].set(str(frame_data[f"data{i}"]))
-                    
-                    # Обновляем остальные поля
-                    if "id" in frame_data:
-                        can_rx_data[0].set(str(frame_data["id"]))
-                    if "len" in frame_data:
-                        can_rx_data[9].set(str(frame_data["len"]))
-                    if "flags" in frame_data:
-                        can_rx_data[10].set(str(frame_data["flags"]))
-                    if "ts" in frame_data:
-                        can_rx_data[11].set(str(frame_data["ts"]))
-                        
-                elif direction == "tx":
-                    # Обновляем Tx поля (аналогично)
-                    for i in range(8):
-                        if f"data{i}" in frame_data:
-                            can_tx_data[i+1].set(str(frame_data[f"data{i}"]))
-                    
-                    if "id" in frame_data:
-                        can_tx_data[0].set(str(frame_data["id"]))
-                    if "len" in frame_data:
-                        can_tx_data[9].set(str(frame_data["len"]))
-                    if "flags" in frame_data:
-                        can_tx_data[10].set(str(frame_data["flags"]))
-                    if "ts" in frame_data:
-                        can_tx_data[11].set(str(frame_data["ts"]))
-                        
+                handle_can_frame(data)
+
+            # Определим, что это модельные данные — по наличию одного из ключей
+            elif any(k in data for k in ["Ms", "ns", "Isd", "Udc"]):
+                handle_model_data(data)
+
+            else:
+                ui_log("⚠ Неизвестный тип сообщения")
+        
         except json.JSONDecodeError:
-            # Не JSON сообщение, просто логируем
-            pass
+            ui_log("❌ Не удалось разобрать JSON")
+    
+    def handle_can_frame(frame_data):
+        direction = frame_data.get("direction", "")
+
+        if direction == "rx":
+            for i in range(8):
+                if f"data{i}" in frame_data:
+                    can_rx_data[i+1].set(str(frame_data[f"data{i}"]))
+            can_rx_data[0].set(str(frame_data.get("id", "")))
+            can_rx_data[9].set(str(frame_data.get("len", "")))
+            can_rx_data[10].set(str(frame_data.get("flags", "")))
+            can_rx_data[11].set(str(frame_data.get("ts", "")))
+
+        elif direction == "tx":
+            for i in range(8):
+                if f"data{i}" in frame_data:
+                    can_tx_data[i+1].set(str(frame_data[f"data{i}"]))
+            can_tx_data[0].set(str(frame_data.get("id", "")))
+            can_tx_data[9].set(str(frame_data.get("len", "")))
+            can_tx_data[10].set(str(frame_data.get("flags", "")))
+            can_tx_data[11].set(str(frame_data.get("ts", "")))
+
+    def handle_model_data(data):
+        print(data)
+        # Пример соответствия полей из JSON к GUI
+        if "ns" in data:
+            entry_vars["Скорость вращения"].set(str(data["ns"]))
+        if "MCU_IGBTTempU" in data:
+            entry_vars["Температура статора"].set(str(data["MCU_IGBTTempU"]))
+        if "MCU_TempCurrStr" in data:
+            entry_vars["Температура ротора"].set(str(data["MCU_TempCurrStr"]))
+
+        # Можно также добавить отображение других параметров, если нужно
+        # Например, логировать моменты, токи и т.д.
+        for key in ["Ms", "Idc", "Isd", "Isq", "Udc"]:
+            if key in data:
+                ui_log(f"{key}: {data[key]}")
+    
+    def send_fake_can_from_fields():
+        try:
+            # Получаем значения
+            Id = float(Id_var.get() or 0)
+            Iq = float(Iq_var.get() or 0)
+            torque = float(torque_var.get() or 0)
+            speed = float(speed_var.get() or 0)
+
+            # Формируем CAN-кадр
+            can_msg = {
+                "cmd": "FakeCAN",
+                "direction": "tx",
+                "id": 0x555,  # можно выбрать любой ID
+                "len": 8,
+                "flags": 0,
+                "ts": 10,#time.time(),  # или фиксированное значение
+                "data0": int(Id * 10) & 0xFF,
+                "data1": int(Iq * 10) & 0xFF,
+                "data2": int(torque) & 0xFF,
+                "data3": int(speed / 10) & 0xFF,
+                "data4": 0,
+                "data5": 0,
+                "data6": 0,
+                "data7": 0
+            }
+
+            # Отправляем
+            client.send_json_threadsafe(can_msg)
+            ui_log("[UI] Отправлен FakeCAN из полей: Id/Iq, Момент, Скорость")
+        except Exception as e:
+            ui_log(f"[Ошибка отправки FakeCAN] {e}")
 
     def on_status(msg):
         root.after(0, lambda: ui_log(f"[WS] {msg}"))
@@ -184,6 +225,12 @@ def create_gui():
             "Isq": float(Iq_var.get() or 0)
         })
     ).pack(side="left", padx=5)
+
+    ttk.Button(
+        extra_frame, text="FakeCAN из полей", width=18,
+        command=lambda: send_fake_can_from_fields()
+    ).pack(side="left", padx=5)
+
     
     # Параметры стенда
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")

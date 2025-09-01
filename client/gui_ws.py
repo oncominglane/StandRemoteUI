@@ -64,19 +64,30 @@ def create_gui():
             can_tx_data[11].set(str(frame_data.get("ts", "")))
 
     def handle_model_data(data):
-        # Пример соответствия полей из JSON к GUI
-        if "ns" in data:
-            entry_vars["Скорость вращения"].set(str(data["ns"]))
-        if "MCU_IGBTTempU" in data:
-            entry_vars["Температура статора"].set(str(data["MCU_IGBTTempU"]))
-        if "MCU_TempCurrStr" in data:
-            entry_vars["Температура ротора"].set(str(data["MCU_TempCurrStr"]))
+        # Привязка ключей JSON к полям ввода
+        field_map = {
+            "ns": "Скорость вращения",
+            "MCU_IGBTTempU": "Температура статора",
+            "MCU_TempCurrStr": "Температура ротора",
+            "Ud": "Ud",
+            "Uq": "Uq",
+            "Id": "Id",
+            "Iq": "Iq",
+            "Emf": "Emf",
+            "Welectrical": "Welectrical",
+            "motorRs": "motorRs",
+            "Wmechanical": "Wmechanical"
+        }
 
-        # Можно также добавить отображение других параметров, если нужно
-        # Например, логировать моменты, токи и т.д.
+        for key, label in field_map.items():
+            if key in data:
+                entry_vars[label].set(str(data[key]))
+
+        # Логирование параметров (опционально)
         for key in ["Ms", "Idc", "Isd", "Isq", "Udc"]:
             if key in data:
                 ui_log(f"{key}: {data[key]}")
+
     
     def send_fake_can_from_fields():
         try:
@@ -234,7 +245,13 @@ def create_gui():
     # Параметры стенда
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
     params_frame.place(x=10, y=260, width=700, height=200)
-    params = ["Скорость вращения", "Температура статора", "Температура ротора"]
+    params = [
+        "Скорость вращения",
+        "Температура статора",
+        "Температура ротора",
+        "Ud", "Uq", "Id", "Iq",
+        "Emf", "Welectrical", "motorRs", "Wmechanical"
+    ]
     entry_vars = {}
     for i, param in enumerate(params):
         ttk.Label(params_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)
@@ -264,6 +281,30 @@ def create_gui():
     for col in range(12):
         entry = Entry(can_frame, textvariable=can_rx_data[col], width=8, justify="center", state="readonly")
         entry.grid(row=2, column=col+1, padx=2, pady=2)
+    
+    # Блок MCU_CurrentVoltage
+    voltage_frame = ttk.LabelFrame(main_inner, text="MCU Current & Voltage")
+    voltage_frame.place(x=10, y=470, width=340, height=120)
+
+    voltage_params = ["Ud", "Uq", "Id", "Iq"]
+    for i, param in enumerate(voltage_params):
+        ttk.Label(voltage_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=3)
+        var = tk.StringVar()
+        entry = ttk.Entry(voltage_frame, textvariable=var, width=15)
+        entry.grid(row=i, column=1, padx=5, pady=3)
+        entry_vars[param] = var
+
+    # Блок MCU_FluxParams
+    flux_frame = ttk.LabelFrame(main_inner, text="MCU Flux Parameters")
+    flux_frame.place(x=360, y=470, width=340, height=120)
+
+    flux_params = ["Emf", "Welectrical", "motorRs", "Wmechanical"]
+    for i, param in enumerate(flux_params):
+        ttk.Label(flux_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=3)
+        var = tk.StringVar()
+        entry = ttk.Entry(flux_frame, textvariable=var, width=15)
+        entry.grid(row=i, column=1, padx=5, pady=3)
+        entry_vars[param] = var
 
     # Режим управления + ползунки
     control_mode_var = tk.StringVar()

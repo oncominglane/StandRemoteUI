@@ -72,4 +72,16 @@ struct DataModel {
 
     // === Прочее ===
     std::string configFilePath = "config/Config.ini";
+
+    float Emf;
+    float Welectrical;
+    float motorRs;
+    float Wmechanical;
+
+    int16_t Ud;
+    int16_t Uq;
+    int16_t Id;
+    int16_t Iq;
+
+
 };

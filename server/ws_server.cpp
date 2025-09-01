@@ -75,8 +75,22 @@ std::string serializeData() {
     j["TCS_active"] = model.TCS_active;
     j["MCU_IGBTTempU"] = model.MCU_IGBTTempU;
     j["MCU_TempCurrStr"] = model.MCU_TempCurrStr;
+
+    // ➕ Новые поля из MCU_CurrentVoltage (0x4F6)
+    j["Ud"] = model.Ud;
+    j["Uq"] = model.Uq;
+    j["Id"] = model.Id;
+    j["Iq"] = model.Iq;
+
+    // ➕ Новые поля из MCU_FluxParams (0x4F7)
+    j["Emf"] = model.Emf;
+    j["Welectrical"] = model.Welectrical;
+    j["motorRs"] = model.motorRs;
+    j["Wmechanical"] = model.Wmechanical;
+
     return j.dump();
 }
+
 
 // Добавим в серверный код функцию для отправки CAN-сообщений
 void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& direction, 

@@ -41,28 +41,98 @@ def create_gui():
         root.after(0, lambda: ui_log(f"[RX] {msg}"))
         try:
             data = json.loads(msg)
-            _update_telemetry(data)
+
             if data.get("type") == "can_frame":
-                frame_data = data.get("data", {})
-                direction = frame_data.get("direction", "")
-                if direction == "rx":
-                    for i in range(8):
-                        if f"data{i}" in frame_data:
-                            can_rx_data[i+1].set(str(frame_data[f"data{i}"]))
-                    if "id" in frame_data:    can_rx_data[0].set(str(frame_data["id"]))
-                    if "len" in frame_data:   can_rx_data[9].set(str(frame_data["len"]))
-                    if "flags" in frame_data: can_rx_data[10].set(str(frame_data["flags"]))
-                    if "ts" in frame_data:    can_rx_data[11].set(str(frame_data["ts"]))
-                elif direction == "tx":
-                    for i in range(8):
-                        if f"data{i}" in frame_data:
-                            can_tx_data[i+1].set(str(frame_data[f"data{i}"]))
-                    if "id" in frame_data:    can_tx_data[0].set(str(frame_data["id"]))
-                    if "len" in frame_data:   can_tx_data[9].set(str(frame_data["len"]))
-                    if "flags" in frame_data: can_tx_data[10].set(str(frame_data["flags"]))
-                    if "ts" in frame_data:    can_tx_data[11].set(str(frame_data["ts"]))
+                handle_can_frame(data)
+
+            # Определим, что это модельные данные — по наличию одного из ключей
+            elif any(k in data for k in ["Ms", "ns", "Isd", "Udc"]):
+                handle_model_data(data)
+
+            else:
+                ui_log("⚠ Неизвестный тип сообщения")
+        
         except json.JSONDecodeError:
-            pass
+            ui_log("❌ Не удалось разобрать JSON")
+    
+    def handle_can_frame(frame_data):
+        direction = frame_data.get("direction", "")
+
+        if direction == "rx":
+            for i in range(8):
+                if f"data{i}" in frame_data:
+                    can_rx_data[i+1].set(str(frame_data[f"data{i}"]))
+            can_rx_data[0].set(str(frame_data.get("id", "")))
+            can_rx_data[9].set(str(frame_data.get("len", "")))
+            can_rx_data[10].set(str(frame_data.get("flags", "")))
+            can_rx_data[11].set(str(frame_data.get("ts", "")))
+
+        elif direction == "tx":
+            for i in range(8):
+                if f"data{i}" in frame_data:
+                    can_tx_data[i+1].set(str(frame_data[f"data{i}"]))
+            can_tx_data[0].set(str(frame_data.get("id", "")))
+            can_tx_data[9].set(str(frame_data.get("len", "")))
+            can_tx_data[10].set(str(frame_data.get("flags", "")))
+            can_tx_data[11].set(str(frame_data.get("ts", "")))
+
+    def handle_model_data(data):
+        # Привязка ключей JSON к полям ввода
+        field_map = {
+            "ns": "Скорость вращения",
+            "MCU_IGBTTempU": "Температура статора",
+            "MCU_TempCurrStr": "Температура ротора",
+            "Ud": "Ud",
+            "Uq": "Uq",
+            "Id": "Id",
+            "Iq": "Iq",
+            "Emf": "Emf",
+            "Welectrical": "Welectrical",
+            "motorRs": "motorRs",
+            "Wmechanical": "Wmechanical"
+        }
+
+        for key, label in field_map.items():
+            if key in data:
+                entry_vars[label].set(str(data[key]))
+
+        # Логирование параметров (опционально)
+        for key in ["Ms", "Idc", "Isd", "Isq", "Udc"]:
+            if key in data:
+                ui_log(f"{key}: {data[key]}")
+
+    
+    def send_fake_can_from_fields():
+        try:
+            # Получаем значения
+            Id = float(Id_var.get() or 0)
+            Iq = float(Iq_var.get() or 0)
+            torque = float(torque_var.get() or 0)
+            speed = float(speed_var.get() or 0)
+
+            # Формируем CAN-кадр
+            can_msg = {
+                "cmd": "FakeCAN",
+                "direction": "tx",
+                "id": 0x555,  # можно выбрать любой ID
+                "len": 8,
+                "flags": 0,
+                "ts": 10,#time.time(),  # или фиксированное значение
+                "data0": int(Id * 10) & 0xFF,
+                "data1": int(Iq * 10) & 0xFF,
+                "data2": int(torque) & 0xFF,
+                "data3": int(speed / 10) & 0xFF,
+                "data4": 0,
+                "data5": 0,
+                "data6": 0,
+                "data7": 0
+            }
+
+            # Отправляем
+            client.send_json_threadsafe(can_msg)
+            ui_log("[UI] Отправлен FakeCAN из полей: Id/Iq, Момент, Скорость")
+        except Exception as e:
+            ui_log(f"[Ошибка отправки FakeCAN] {e}")
 
     def on_status(msg):
         root.after(0, lambda: ui_log(f"[WS] {msg}"))
@@ -207,11 +277,23 @@ def create_gui():
             "Isq": float(Iq_var.get() or 0)
         })
     ).pack(side="left", padx=5)
+
+    ttk.Button(
+        extra_frame, text="FakeCAN из полей", width=18,
+        command=lambda: send_fake_can_from_fields()
+    ).pack(side="left", padx=5)
+
     
     # Параметры стенда
     params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
     params_frame.place(x=10, y=260, width=700, height=200)
-    params = ["Скорость вращения", "Температура статора", "Температура ротора"]
+    params = [
+        "Скорость вращения",
+        "Температура статора",
+        "Температура ротора",
+        "Ud", "Uq", "Id", "Iq",
+        "Emf", "Welectrical", "motorRs", "Wmechanical"
+    ]
     entry_vars = {}
     for i, param in enumerate(params):
         ttk.Label(params_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)
@@ -232,8 +314,32 @@ def create_gui():
         Entry(can_frame, textvariable=can_tx_data[col], width=8, justify="center", state="readonly")\
             .grid(row=1, column=col+1, padx=2, pady=2)
     for col in range(12):
-        Entry(can_frame, textvariable=can_rx_data[col], width=8, justify="center", state="readonly")\
-            .grid(row=2, column=col+1, padx=2, pady=2)
+        entry = Entry(can_frame, textvariable=can_rx_data[col], width=8, justify="center", state="readonly")
+        entry.grid(row=2, column=col+1, padx=2, pady=2)
+    
+    # Блок MCU_CurrentVoltage
+    voltage_frame = ttk.LabelFrame(main_inner, text="MCU Current & Voltage")
+    voltage_frame.place(x=10, y=470, width=340, height=120)
+
+    voltage_params = ["Ud", "Uq", "Id", "Iq"]
+    for i, param in enumerate(voltage_params):
+        ttk.Label(voltage_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=3)
+        var = tk.StringVar()
+        entry = ttk.Entry(voltage_frame, textvariable=var, width=15)
+        entry.grid(row=i, column=1, padx=5, pady=3)
+        entry_vars[param] = var
+
+    # Блок MCU_FluxParams
+    flux_frame = ttk.LabelFrame(main_inner, text="MCU Flux Parameters")
+    flux_frame.place(x=360, y=470, width=340, height=120)
+
+    flux_params = ["Emf", "Welectrical", "motorRs", "Wmechanical"]
+    for i, param in enumerate(flux_params):
+        ttk.Label(flux_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=3)
+        var = tk.StringVar()
+        entry = ttk.Entry(flux_frame, textvariable=var, width=15)
+        entry.grid(row=i, column=1, padx=5, pady=3)
+        entry_vars[param] = var
 
     # Режим управления + ползунки
     control_mode_var = tk.StringVar()

@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Users/n.tulupov/Desktop/StandRemoteUI-1/server/build/cmake_install.cmake",
-		"C:/Users/n.tulupov/Desktop/StandRemoteUI-1/server/build/Stand_Marathon/Include/CAN_DBC_MODULE/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

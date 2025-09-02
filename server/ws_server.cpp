@@ -75,8 +75,22 @@ std::string serializeData() {
     j["TCS_active"] = model.TCS_active;
     j["MCU_IGBTTempU"] = model.MCU_IGBTTempU;
     j["MCU_TempCurrStr"] = model.MCU_TempCurrStr;
+
+    // ➕ Новые поля из MCU_CurrentVoltage (0x4F6)
+    j["Ud"] = model.Ud;
+    j["Uq"] = model.Uq;
+    j["Id"] = model.Id;
+    j["Iq"] = model.Iq;
+
+    // ➕ Новые поля из MCU_FluxParams (0x4F7)
+    j["Emf"] = model.Emf;
+    j["Welectrical"] = model.Welectrical;
+    j["motorRs"] = model.motorRs;
+    j["Wmechanical"] = model.Wmechanical;
+
     return j.dump();
 }
+
 
 // Добавим в серверный код функцию для отправки CAN-сообщений
 void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& direction, 
@@ -101,6 +115,33 @@ void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& directi
         std::cerr << "[Error] Failed to send CAN frame: " << e.what() << std::endl;
     }
 }
+
+void handleCommand(const json& j) {
+    std::string cmd = j.value("cmd", "");
+
+    if (cmd == "Init") {
+        sm.setState(State::Init);
+    } else if (cmd == "Stop") {
+        sm.setState(State::Stop);
+    } else if (cmd == "Read2") {
+        sm.setState(State::Read2);
+    } else if (cmd == "SaveCfg") {
+        sm.setState(State::Save_Cfg);
+    } else if (cmd == "SendControl") {
+        apply_control_fields(j);
+        CommandSender::sendControlCommand(can, model);
+    } else if (cmd == "SendLimits") {
+        apply_limit_fields(j);
+        CommandSender::sendLimitCommand(can, model);
+    } else if (cmd == "SendTorque") {
+        std::cout << "ABOBA" << std::endl;
+        apply_torque_fields(j);
+        CommandSender::sendTorqueCommand(can, model);
+    } else {
+        std::cerr << "[Warn] Unknown command: " << cmd << std::endl;
+    }
+}
+
 
 // Модифицируем функцию do_session для отправки CAN-сообщений
 void do_session(tcp::socket socket) {
@@ -139,13 +180,7 @@ void do_session(tcp::socket socket) {
             auto j = json::parse(msg);
 
             std::string cmd = j.value("cmd", "");
-            if (cmd == "Init") sm.setState(State::Init);
-            else if (cmd == "Stop") sm.setState(State::Stop);
-            else if (cmd == "Read2") sm.setState(State::Read2);
-            else if (cmd == "SaveCfg") sm.setState(State::Save_Cfg);
-            else if (cmd == "SendControl") CommandSender::sendControlCommand(can, model);
-            else if (cmd == "SendLimits") CommandSender::sendLimitCommand(can, model);
-            else if (cmd == "SendTorque") CommandSender::sendTorqueCommand(can, model);
+            handleCommand(j);
         }
 
         updater.join();

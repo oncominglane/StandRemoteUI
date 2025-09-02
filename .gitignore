@@ -1,4 +1,4 @@
 # build artifacts
-__pycache__/
-*.py[cod]
-*$py.class
+client/__pycache__/
+client/build/
+server/build/

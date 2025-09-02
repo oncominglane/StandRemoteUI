@@ -2,75 +2,126 @@
 #include <iostream>
 #include <cstring>
 
-static int16_t toInt16(const uint8_t* d) {
-    return static_cast<int16_t>((d[1] << 8) | d[0]);
+uint32_t UnpackSignalFromBytes(const uint8_t* data, uint8_t startBit, uint8_t length)
+{
+    uint32_t result = 0;
+
+    uint8_t currentStartBit;
+    uint8_t startByteInValue;
+    uint8_t startByteInData;
+    int8_t shift;
+    uint8_t lengthInBytesIncreased = 0;
+    uint8_t startBitInByte;
+
+    startBitInByte = startBit % 8;
+    currentStartBit = (length - 1) % 8;
+    startByteInData = startBit / 8;
+    shift = startBitInByte - currentStartBit;
+    if (shift < 0)
+    {
+        shift += 8;
+        lengthInBytesIncreased = 1;
+    }
+    startByteInValue = (length - 1) / 8 + lengthInBytesIncreased;
+    for (int i = startByteInValue; i >= 0; i--)
+    {
+        result <<= 8;
+        result |= data[startByteInData + startByteInValue - i];
+    }
+    result >>= shift;
+    result &= 0xffffffff >> (32 - length);
+    return result;
 }
 
 void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
     switch (msg.id) {
-        case 0x300: { // Основные рабочие параметры
-            data.Ms  = toInt16(&msg.data[0]) / 10.0f;   // момент Нм
-            data.ns  = toInt16(&msg.data[2]);           // скорость об/мин
-            data.Idc = toInt16(&msg.data[4]) / 10.0f;   // ток DC
-            data.Isd = toInt16(&msg.data[6]) / 10.0f;   // ток d
+        case 0x300: { // MCU_VCU_1 (BO_ 122)
+            float actualTorque = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 7, 11)) - 1024;
+            float udcCurr = UnpackSignalFromBytes(msg.data, 12, 10); // No offset
+            float isCurr = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 18, 11)) - 1024;
+            int16_t actualSpeed = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 39, 16)) - 32768;
+
+            data.Ms = actualTorque;
+            data.Idc = udcCurr;
+            data.Isd = isCurr;
+            data.ns = actualSpeed;
+
             std::cout << "[RX] Ms=" << data.Ms << " Ns=" << data.ns
                       << " Idc=" << data.Idc << " Isd=" << data.Isd << std::endl;
             break;
         }
-        case 0x046: { // Управление
-            data.MotorCtrl = msg.data[0];
-            data.GearCtrl  = msg.data[1];
-            data.Brake_active = msg.data[2] & 0x01;
-            data.TCS_active   = msg.data[2] & 0x02;
-            data.Kl_15 = msg.data[3] & 0x01;
-            std::cout << "[RX] MotorCtrl=" << (int)data.MotorCtrl
-                      << " GearCtrl=" << (int)data.GearCtrl
-                      << " Brake=" << data.Brake_active
-                      << " TCS=" << data.TCS_active << std::endl;
+
+        case 0x47A: { // MCU_Temperature1 (BO_ 123)
+            data.MCU_IGBTTempU   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 7, 8)) - 50;
+            data.MCU_IGBTTempV   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 15, 8)) - 50;
+            data.MCU_IGBTTempW   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 23, 8)) - 50;
+            data.MCU_IGBTTempMax = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 31, 8)) - 50;
+
+            std::cout << "[RX] IGBT Temps: U=" << (int)data.MCU_IGBTTempU
+                      << " V=" << (int)data.MCU_IGBTTempV
+                      << " W=" << (int)data.MCU_IGBTTempW << std::endl;
             break;
         }
-        case 0x475: { // Ограничения
-            data.M_max = toInt16(&msg.data[0]) / 10.0f;
-            data.M_min = toInt16(&msg.data[2]) / 10.0f;
-            data.M_grad_max = toInt16(&msg.data[4]);
+
+        case 0x47B: { // MCU_Temperature2 (BO_ 124)
+            data.MCU_TempCurrCool = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 7, 8)) - 50;
+            data.MCU_TempCurrStr  = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 31, 8)) - 50;
+
+            std::cout << "[RX] Stator Temp=" << (int)data.MCU_TempCurrStr
+                      << " Coolant=" << (int)data.MCU_TempCurrCool << std::endl;
+            break;
+        }
+
+        case 0x475: { // MCU_DeratingStatus (BO_ 709)
+            data.M_max = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 11, 11)) - 1024;
+            data.M_min = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 16, 11)) - 1024;
+            // M_grad_max не существует в DBC, пропускаем
+
             std::cout << "[RX] Limits: M_max=" << data.M_max
-                      << " M_min=" << data.M_min
-                      << " Grad=" << data.M_grad_max << std::endl;
+                      << " M_min=" << data.M_min << std::endl;
             break;
         }
-        case 0x2C5: { // MCU статус
-            data.MCU_Status = msg.data[0];
-            std::cout << "[RX] MCU_Status=" << (int)data.MCU_Status << std::endl;
+
+        case 0x2C6: { // MCU_FailureCode (BO_ 710)
+            uint8_t failCode = UnpackSignalFromBytes(msg.data, 7, 3);
+            std::cout << "[RX] Error Level (MCU_FailCode1): " << (int)failCode << std::endl;
             break;
         }
-        case 0x2C6: { // Ошибки
-            std::cout << "[RX] Error Level: " << (int)msg.data[0] << std::endl;
-            break;
-        }
-        case 0x47A: { // Температуры IGBT
-            data.MCU_IGBTTempU = msg.data[0];
-            data.MCU_IGBTTempV = msg.data[1];
-            data.MCU_IGBTTempW = msg.data[2];
-            data.MCU_IGBTTempMax = msg.data[3];
-            std::cout << "[RX] IGBT Temps: U=" << data.MCU_IGBTTempU
-                      << " V=" << data.MCU_IGBTTempV
-                      << " W=" << data.MCU_IGBTTempW << std::endl;
-            break;
-        }
-        case 0x47B: { // Температура статора
-            data.MCU_TempCurrStr = msg.data[0];
-            data.MCU_TempCurrCool = msg.data[1];
-            std::cout << "[RX] Stator Temp=" << data.MCU_TempCurrStr
-                      << " Coolant=" << data.MCU_TempCurrCool << std::endl;
-            break;
-        }
-        case 0x49A: { // Версия ПО MCU
-            char buff[5] = {};
-            memcpy(buff, msg.data, 4);
-            data.MCU_SW_ver = std::string(buff);
+
+        case 0x49A: { // MCU_SoftwareNumber (BO_ 1178)
+            uint16_t codeVer = UnpackSignalFromBytes(msg.data, 7, 16);
+            data.MCU_SW_ver = "v" + std::to_string(codeVer);
             std::cout << "[RX] MCU_SW_ver=" << data.MCU_SW_ver << std::endl;
             break;
         }
+
+        case 0x4F7: { // MCU_FluxParams (BO_ 127)
+            data.Emf          = static_cast<float>(UnpackSignalFromBytes(msg.data, 7, 16));
+            data.Welectrical  = static_cast<float>(UnpackSignalFromBytes(msg.data, 23, 16));
+            data.motorRs      = static_cast<float>(UnpackSignalFromBytes(msg.data, 39, 16));
+            data.Wmechanical  = static_cast<float>(UnpackSignalFromBytes(msg.data, 55, 16));
+
+            std::cout << "[RX] FluxParams: Emf=" << data.Emf
+                      << " We=" << data.Welectrical
+                      << " Rs=" << data.motorRs
+                      << " Wm=" << data.Wmechanical << std::endl;
+            break;
+        }
+
+        case 0x4F6: { // MCU_CurrentVoltage (BO_ 126)
+            data.Ud = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 7, 16));
+            data.Uq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 23, 16));
+            data.Id = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 39, 16));
+            data.Iq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 55, 16));
+
+            std::cout << "[RX] CurrentVoltage: Ud=" << data.Ud
+                      << " Uq=" << data.Uq
+                      << " Id=" << data.Id
+                      << " Iq=" << data.Iq << std::endl;
+            break;
+        }
+
+
         default:
             std::cout << "[RX] Unknown ID: 0x" << std::hex << msg.id << std::dec << std::endl;
             break;

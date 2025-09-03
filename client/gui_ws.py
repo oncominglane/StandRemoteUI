@@ -64,9 +64,8 @@ def create_gui():
             can_tx_data[11].set(str(frame_data.get("ts", "")))
 
     def handle_model_data(data):
-        # Привязка ключей JSON к полям ввода
+        # Существующий field_map для остальных параметров (кроме MCU_VCU_1)
         field_map = {
-            "ns": "Скорость вращения",
             "MCU_IGBTTempU": "Температура статора",
             "MCU_TempCurrStr": "Температура ротора",
             "Ud": "Ud",
@@ -79,6 +78,12 @@ def create_gui():
             "Wmechanical": "Wmechanical"
         }
 
+        # Обновляем MCU_VCU_1 поля
+        for key in vcu_vars:
+            if key in data:
+                vcu_vars[key].set(str(data[key]))
+
+        # Обновляем остальные поля
         for key, label in field_map.items():
             if key in data:
                 entry_vars[label].set(str(data[key]))
@@ -247,11 +252,36 @@ def create_gui():
     params_frame.place(x=10, y=260, width=700, height=200)
     params = [
         "Скорость вращения",
+        "Момент (Ms)",       # новый
+        "Ток постоянного (Idc)", # новый
+        "Ток статора d (Isd)",   # новый
         "Температура статора",
         "Температура ротора",
         "Ud", "Uq", "Id", "Iq",
         "Emf", "Welectrical", "motorRs", "Wmechanical"
     ]
+
+    # В create_gui(), после создания params_frame и entry_vars
+
+    # Новый блок для MCU_VCU_1 параметров (Ms, ns, Idc, Isd)
+    vcu_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_1 параметры")
+    vcu_frame.place(x=10, y=470, width=340, height=130)
+
+    vcu_params = {
+        "Ms": "Момент (Ms)",
+        "ns": "Скорость вращения",
+        "Idc": "Ток постоянного (Idc)",
+        "Isd": "Ток статора d (Isd)"
+    }
+
+    vcu_vars = {}
+    for i, (key, label) in enumerate(vcu_params.items()):
+        ttk.Label(vcu_frame, text=label + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)
+        var = tk.StringVar()
+        entry = ttk.Entry(vcu_frame, textvariable=var, width=20, state="readonly")
+        entry.grid(row=i, column=1, padx=5, pady=5)
+        vcu_vars[key] = var
+
     entry_vars = {}
     for i, param in enumerate(params):
         ttk.Label(params_frame, text=param + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)

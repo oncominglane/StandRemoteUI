@@ -1,4 +1,5 @@
 #include "StateMachine.h"
+#include "CommandSender.h"
 #include <iostream>
 
 StateMachine::StateMachine(DataModel& model, CANInterface& can, ConfigManager& cfg)
@@ -9,6 +10,10 @@ void StateMachine::setState(State newState) {
 }
 
 void StateMachine::update() {
+    CommandSender::sendControlCommand(canInterface, data);
+    CommandSender::sendLimitCommand(canInterface, data);
+    CommandSender::sendTorqueCommand(canInterface, data);
+
     switch (currentState) {
         case State::Idle:     handleIdle(); break;
         case State::Init:     handleInit(); break;

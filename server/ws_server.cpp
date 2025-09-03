@@ -146,49 +146,53 @@ void handleCommand(const json& j) {
 // Модифицируем функцию do_session для отправки CAN-сообщений
 void do_session(tcp::socket socket) {
     try {
-        websocket::stream<tcp::socket> ws{std::move(socket)};
-        ws.accept();
+        auto ws = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
+        ws->accept();
         std::cout << "[WS] Client connected" << std::endl;
 
-        // Поток обновлений данных
-        std::thread updater([&ws]() {
-            while (true) {
+        std::atomic<bool> running{true};
+
+        std::thread updater([ws, &running]() {
+            while (running) {
                 try {
                     sm.update();
                     std::string data = serializeData();
-                    ws.write(boost::asio::buffer(data));
-                    
-                    // Пример отправки CAN-сообщения
-                    // В реальном коде здесь должны быть реальные данные из CAN-интерфейса
+                    ws->write(boost::asio::buffer(data));
+
                     std::vector<uint8_t> can_data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-                    sendCANFrame(ws, "rx", 0x123, can_data, can_data.size(), 0, 
-                                std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0);
-                    
+                    sendCANFrame(*ws, "rx", 0x123, can_data, can_data.size(), 0,
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0);
+
                     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                } catch (...) {
-                    break; // если клиент отключился
+                } catch (const std::exception& e) {
+                    std::cerr << "[Updater error] " << e.what() << std::endl;
+                    break;
                 }
             }
         });
 
-        // Чтение команд (остается без изменений)
-        for (;;) {
-            boost::beast::flat_buffer buffer;
-            ws.read(buffer);
-            std::string msg = boost::beast::buffers_to_string(buffer.data());
-            auto j = json::parse(msg);
+        try {
+            for (;;) {
+                boost::beast::flat_buffer buffer;
+                ws->read(buffer);
+                std::string msg = boost::beast::buffers_to_string(buffer.data());
+                auto j = json::parse(msg);
 
-            std::string cmd = j.value("cmd", "");
-            handleCommand(j);
+                handleCommand(j);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Reader error] " << e.what() << std::endl;
         }
 
-        updater.join();
+        running = false;
+        if (updater.joinable()) updater.join();
 
-    } catch (std::exception const& e) {
-        std::cerr << "[Error] " << e.what() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[Session error] " << e.what() << std::endl;
     }
 }
+
 
 int main() {
     // Загрузка конфигурации и перевод в исходное состояние
@@ -201,6 +205,7 @@ int main() {
         std::cout << "WebSocket server running at ws://0.0.0.0:9000" << std::endl;
 
         for (;;) {
+            std::cout << "ABOBA" << std::endl;
             tcp::socket socket{ioc};
             acceptor.accept(socket);
             std::thread(&do_session, std::move(socket)).detach();

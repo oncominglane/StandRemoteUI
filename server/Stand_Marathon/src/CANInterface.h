@@ -22,7 +22,7 @@ public:
     bool init(uint16_t channel, uint32_t baudrate, uint32_t flags);
     void stop();
 
-    //uint8_t send(dbc_can_tx_message_type* message);
+    uint8_t sendDBC(dbc_can_tx_message_type* message);
     bool send(uint32_t id, const uint8_t* data, uint8_t length);
     bool receive(CANMessage& msg);
 

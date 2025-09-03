@@ -79,7 +79,7 @@ void CANInterface::stop() {
     }
 }
 
-/*uint8_t CANInterface::send(dbc_can_tx_message_type* message) {
+uint8_t CANInterface::sendDBC(dbc_can_tx_message_type* message) {
     if (!initialized) return false;
 
     TPCANMsg msg{};
@@ -94,7 +94,7 @@ void CANInterface::stop() {
         return false;
     }
     return true;
-}*/
+}
 
 bool CANInterface::send(uint32_t id, const uint8_t* data, uint8_t length) {
     if (!initialized) return false;

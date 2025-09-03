@@ -20,6 +20,10 @@
 #include "ConfigManager.h"
 #include "CANInterface.h"
 
+//dbc заголовки
+#include"DbcDispatcher.hpp"
+#include "canDBCtask.h"
+
 using tcp = boost::asio::ip::tcp;
 namespace websocket = boost::beast::websocket;
 using json = nlohmann::json;
@@ -59,6 +63,10 @@ static void apply_torque_fields(const json& j) {
     set_if_present(j, "En_rem", model.En_rem);
     set_if_present(j, "Isd",    model.Isd);
     set_if_present(j, "Isq",    model.Isq);
+}
+
+uint8_t sendDBC(dbc_can_tx_message_type* message) {
+    can.sendDBC(message);
 }
 
 // Сериализация DataModel в JSON
@@ -198,6 +206,8 @@ int main() {
     // Загрузка конфигурации и перевод в исходное состояние
     config.load(model);
     sm.setState(State::Idle);
+
+    dbc_init(&ReceiveDispatcher, &SendDispatcher, &sendDBC);
 
     try {
         boost::asio::io_context ioc;

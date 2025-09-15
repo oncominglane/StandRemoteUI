@@ -103,8 +103,14 @@ bool ConfigManager::save(const DataModel& d) {
     writeInt("Can", "Can-Ch", d.canChannel);
     writeInt("Can", "Can-Baud", d.canBaud);
     writeInt("Can", "Can-Flags", d.canFlags);
-    writeString("Can", "ACode-Filter", "0x" + std::to_string(d.acode));
-    writeString("Can", "AMask-Filter", "0x" + std::to_string(d.amask));
+    auto to_hex8 = [](uint32_t v){
+        char buf[11];
+        std::snprintf(buf, sizeof(buf), "0x%08X", v);
+        return std::string(buf);
+    };
+    writeString("Can", "ACode-Filter", to_hex8(d.acode));
+    writeString("Can", "AMask-Filter", to_hex8(d.amask));
+
 
     writeBool("Motor", "Kl_15", d.Kl_15);
     writeBool("Motor", "En_rem", d.En_rem);

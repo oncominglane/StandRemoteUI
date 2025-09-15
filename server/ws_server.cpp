@@ -38,13 +38,22 @@ inline void set_if_present(const json& j, const char* key, T& target) {
 }
 
 // применить параметры управления (для "SendControl")
+// применить параметры управления (для "SendControl")
 static void apply_control_fields(const json& j) {
     set_if_present(j, "MotorCtrl",    model.MotorCtrl);
     set_if_present(j, "GearCtrl",     model.GearCtrl);
     set_if_present(j, "Kl_15",        model.Kl_15);
     set_if_present(j, "Brake_active", model.Brake_active);
     set_if_present(j, "TCS_active",   model.TCS_active);
+
+    // ✳ ДОБАВЛЕНО:
+    set_if_present(j, "En_Is",        model.En_Is);
+
+    // Если вы используете отдельный сетпоинт скорости — лучше model.ns_setpoint.
+    // Если его нет — временно кладём в model.ns (но это смешивает измерение и задание):
+    set_if_present(j, "ns",           model.ns);
 }
+
 
 // применить лимиты (для "SendLimits")
 static void apply_limit_fields(const json& j) {
@@ -56,7 +65,7 @@ static void apply_limit_fields(const json& j) {
 
 // применить Id/Iq и прочее удалённое управление (для "SendTorque")
 static void apply_torque_fields(const json& j) {
-    set_if_present(j, "En_rem", model.En_rem);
+    set_if_present(j, "En_Is", model.En_Is);
     set_if_present(j, "Isd",    model.Isd);
     set_if_present(j, "Isq",    model.Isq);
 }

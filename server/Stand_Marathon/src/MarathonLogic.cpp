@@ -1,6 +1,25 @@
 #include "MarathonLogic.h"
 #include <iostream>
 #include <cstring>
+#include <iomanip>
+
+void printCANMessage(const CANMessage& msg, std::ostream& os, bool showDec) {
+    os << "[CAN RX] ID=0x" << std::uppercase << std::hex << msg.id
+       << " (" << std::dec << msg.id << ")"
+       << " DLC=" << (int)msg.length
+       << " Timestamp=" << msg.timestamp
+       << "\n   Data: ";
+
+    for (int i = 0; i < msg.length; ++i) {
+        os << "0x" << std::uppercase << std::hex
+           << std::setw(2) << std::setfill('0') << (int)msg.data[i];
+        if (showDec) {
+            os << "(" << std::dec << (int)msg.data[i] << ")";
+        }
+        os << " ";
+    }
+    os << std::dec << "\n";
+}
 
 uint32_t UnpackSignalFromBytes(const uint8_t* data, uint8_t startBit, uint8_t length)
 {
@@ -34,6 +53,10 @@ uint32_t UnpackSignalFromBytes(const uint8_t* data, uint8_t startBit, uint8_t le
 }
 
 void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
+    if (std::getenv("WS_LOG_CAN_RX")) {
+    std::cout << "I`m here\n";
+        printCANMessage(msg, std::cout, 0);
+    }
     switch (msg.id) {
         case 0x300: { // MCU_VCU_1 (BO_ 122)
             float actualTorque = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 7, 11)) - 1024;
@@ -42,12 +65,12 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             int16_t actualSpeed = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 39, 16)) - 32768;
 
             data.Ms = actualTorque;
-            data.Idc = udcCurr;
-            data.Isd = isCurr;
+            data.Udc = udcCurr;
+            data.Idc = isCurr;
             data.ns = actualSpeed;
 
             std::cout << "[RX] Ms=" << data.Ms << " Ns=" << data.ns
-                      << " Idc=" << data.Idc << " Isd=" << data.Isd << std::endl;
+                      << " Udc=" << data.Udc << " Idc=" << data.Idc << std::endl;
             break;
         }
 

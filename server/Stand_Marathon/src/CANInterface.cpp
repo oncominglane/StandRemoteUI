@@ -46,6 +46,7 @@ bool CANInterface::init(uint16_t channel, uint32_t baudrate, uint32_t flags) {
 
     // ✅ Маппинг скорости
     TPCANBaudrate pcanBaud = PCAN_BAUD_500K; // дефолт
+    std::cout << baudrate << std::endl;
     if (baudrate == 1000000) pcanBaud = PCAN_BAUD_1M;
     else if (baudrate == 500000) pcanBaud = PCAN_BAUD_500K;
     else if (baudrate == 250000) pcanBaud = PCAN_BAUD_250K;
@@ -53,6 +54,8 @@ bool CANInterface::init(uint16_t channel, uint32_t baudrate, uint32_t flags) {
     else if (baudrate == 50000)  pcanBaud = PCAN_BAUD_50K;
     else if (baudrate == 20000)  pcanBaud = PCAN_BAUD_20K;
     else if (baudrate == 10000)  pcanBaud = PCAN_BAUD_10K;
+
+    pcanBaud = PCAN_BAUD_1M;
 
     // ✅ Игнорируем flags, если они не нужны
     (void)flags;
@@ -62,6 +65,12 @@ bool CANInterface::init(uint16_t channel, uint32_t baudrate, uint32_t flags) {
     if (status != PCAN_ERROR_OK) {
         std::cerr << "CAN init failed: " << getErrorText(status) << std::endl;
         return false;
+    }
+
+    TPCANStatus flt = PCAN_FILTER_OPEN;
+    status = CAN_SetValue(handle, PCAN_MESSAGE_FILTER, &flt, sizeof(flt));
+    if (status != PCAN_ERROR_OK) {
+        std::cerr << "Filter open failed: " << getErrorText(status) << std::endl;
     }
 
     initialized = true;

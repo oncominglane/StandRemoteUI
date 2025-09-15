@@ -129,7 +129,7 @@ void CommandSender::sendTorqueCommand(CANInterface& can, const DataModel& data) 
     PackSignalToBytes(payload, iq_raw, 23, 13);
 
     // 3. VCU_CurrentCommandEnable: 1 бит, старт с 39
-    PackSignalToBytes(payload, data.En_rem ? 1 : 0, 39, 1);
+    PackSignalToBytes(payload, (data.En_Is) ? 1 : 0, 39, 1);
 
     // 4. MessageCounter_300: 4 бита, старт с 51
     static uint8_t counter = 0;

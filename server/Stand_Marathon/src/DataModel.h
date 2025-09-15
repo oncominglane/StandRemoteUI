@@ -5,15 +5,15 @@
 struct DataModel {
     // === CAN настройки ===
     uint16_t canBoard = 0;
-    uint16_t canChannel = 0;
-    uint32_t canBaud = 0;
+    uint16_t canChannel = 1;
+    uint32_t canBaud = 1000000;
     uint32_t canFlags = 0;
     uint32_t amask = 0x00000000;
     uint32_t acode = 0x00000032;
 
     // === Управление ===
     bool Kl_15 = false;            // Зажигание
-    bool En_rem = false;           // Удаленное управление
+    bool En_rem = true;           // Удаленное управление
     bool En_Is = false;            // Управление током
     uint8_t Dampf_U = 0;           // Демпф. U
     bool Brake_active = false;     // Тормоз

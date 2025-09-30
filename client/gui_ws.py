@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import Tk, ttk, Text, StringVar, Entry, Frame
 import json
 import time
+from datetime import datetime
+import csv
 
 # ---------- Глобальные настройки UI ----------
 APP_FONT = ("Segoe UI", 10)
@@ -46,13 +48,17 @@ active_scale = None  # текущий выбранный ползунок
 
 def create_gui():
     root = tk.Tk()
-    root.title("Удалённое управление стендом")
+    root.title("StandRemoteGUI")
     root.geometry("1080x740+100+100")
+    try:
+        root.state("zoomed")
+    except Exception:
+        pass
     style = init_style(dark=False)  # dark=True для тёмной темы
 
     # Индикатор статуса (цветная «пилюля»)
-    conn_var = tk.StringVar(value="Отключено")
-    conn_color = tk.StringVar(value="#d93025")  # красный
+    conn_var = tk.StringVar(value="disabled")
+    conn_color = tk.StringVar(value="#d72c20")  # красный
 
     toolbar = ttk.Frame(root, style="Toolbar.TFrame")
     toolbar.pack(fill="x")
@@ -71,13 +77,13 @@ def create_gui():
         return wrap
 
     # Крупные кнопки
-    ttk.Button(toolbar, text="▶ Старт", width=14, style="Accent.TButton",
+    ttk.Button(toolbar, text="▶ Start", width=14, style="Accent.TButton",
                command=lambda: client.send_cmd_threadsafe("Init")).pack(side="left", padx=(PAD, 4), pady=PAD)
-    ttk.Button(toolbar, text="■ Стоп", width=14,
+    ttk.Button(toolbar, text="■ Stop", width=14,
                command=lambda: client.send_cmd_threadsafe("Stop")).pack(side="left", padx=4, pady=PAD)
-    ttk.Button(toolbar, text="↺ Сброс", width=14,
+    ttk.Button(toolbar, text="↺ Reset", width=14,
                command=lambda: client.send_cmd_threadsafe("Read2")).pack(side="left", padx=4, pady=PAD)
-    ttk.Button(toolbar, text="💾 Сохранить", width=14,
+    ttk.Button(toolbar, text="💾 Save", width=14,
                command=lambda: client.send_cmd_threadsafe("SaveCfg")).pack(side="left", padx=4, pady=PAD)
 
     # Индикатор соединения справа
@@ -86,13 +92,29 @@ def create_gui():
     
     # Коллбеки для WS с безопасным обновлением из главного потока
     log_box = tk.Text(root, height=10, wrap="word")
-    def ui_log(msg):
-        log_box.insert("end", msg.strip() + "\n")
+    def ui_log(*parts):
+        msg = " ".join(str(p) for p in parts).strip()
+        log_box.insert("end", msg + "\n")
         log_box.see("end")
 
     # Глобальные переменные для CAN данных
     can_rx_data = [StringVar() for _ in range(12)]  # 12 полей для Rx CAN
     can_tx_data = [StringVar() for _ in range(12)]  # 12 полей для Tx CAN
+
+    # Журнал телеметрии
+    log_enabled = tk.BooleanVar(value=True)
+    log_rows = []  # список словарей
+    max_rows = 5000  # ограничение на длину буфера/таблицы
+
+    # Колонки журнала (порядок)
+    TELEM_COLUMNS = [
+        "ts",
+        "ns", "Ms",
+        "Idc", "Isd",
+        "Ud", "Uq", "Id", "Iq",
+        "Emf", "Welectrical", "motorRs", "Wmechanical",
+    ]
+
 
     # ==== КНОПОЧНЫЕ ХЭНДЛЕРЫ ====
 
@@ -149,7 +171,7 @@ def create_gui():
             Id = float(Id_var.get() or 0.0)
             Iq = float(Iq_var.get() or 0.0)
         except Exception:
-            ui_log("[UI] Id/Iq: некорректные значения", "ERR"); return
+            ui_log("[UI] Id/Iq: incorrect values", "ERR"); return
 
         client.send_json_threadsafe({
             "cmd": "SendTorque",
@@ -173,23 +195,22 @@ def create_gui():
 
 
     def on_message(msg):
-        root.after(0, lambda: ui_log(f"[RX] {msg}"))
-        
         try:
             data = json.loads(msg)
+        except json.JSONDecodeError:
+            root.after(0, lambda: ui_log("❌ Couldn't parse JSON"))
+            return
 
+        def _ui_work():
+            ui_log(f"[RX] {msg}")
             if data.get("type") == "can_frame":
                 handle_can_frame(data)
-
-            # Определим, что это модельные данные — по наличию одного из ключей
-            elif any(k in data for k in ["Ms", "ns", "Isd", "Udc"]):
-                handle_model_data(data)
-
+            elif any(k in data for k in ["Ms", "ns", "Isd", "Udc", "Ud", "Uq", "Id", "Iq"]):
+                handle_model_data(data)   # теперь точно в UI-потоке
             else:
-                ui_log("⚠ Неизвестный тип сообщения")
-        
-        except json.JSONDecodeError:
-            ui_log("❌ Не удалось разобрать JSON")
+                ui_log("⚠ Unknown message type")
+
+        root.after(0, _ui_work)
     
     def handle_can_frame(frame_data):
         direction = frame_data.get("direction", "")
@@ -213,35 +234,38 @@ def create_gui():
             can_tx_data[11].set(str(frame_data.get("ts", "")))
 
     def handle_model_data(data):
-        # Существующий field_map для остальных параметров (кроме MCU_VCU_1)
         field_map = {
+            # Параметры стенда
+            "ns": "Скорость вращения",
+            "Ms": "Момент (Ms)",
+            "Idc": "Ток постоянного (Idc)",
+            "Isd": "Ток статора d (Isd)",
             "MCU_IGBTTempU": "Температура статора",
             "MCU_TempCurrStr": "Температура ротора",
+
+            # MCU Current & Voltage
             "Ud": "Ud",
             "Uq": "Uq",
             "Id": "Id",
             "Iq": "Iq",
+
+            # MCU Flux Parameters
             "Emf": "Emf",
             "Welectrical": "Welectrical",
             "motorRs": "motorRs",
-            "Wmechanical": "Wmechanical"
+            "Wmechanical": "Wmechanical",
         }
 
-        # Обновляем MCU_VCU_1 поля
-        for key in vcu_vars:
-            if key in data:
-                vcu_vars[key].set(str(data[key]))
-
-        # Обновляем остальные поля
         for key, label in field_map.items():
-            if key in data:
+            if key in data and label in entry_vars:
                 entry_vars[label].set(str(data[key]))
 
-        # Логирование параметров (опционально)
-        for key in ["Ms", "Idc", "Isd", "Isq", "Udc"]:
+        # Доп. лог (опционально)
+        for key in ("Ms", "Idc", "Isd", "ns", "Udc"):
             if key in data:
                 ui_log(f"{key}: {data[key]}")
 
+    
     
     def send_fake_can_from_fields():
         try:
@@ -271,7 +295,7 @@ def create_gui():
 
             # Отправляем
             client.send_json_threadsafe(can_msg)
-            ui_log("[UI] Отправлен FakeCAN из полей: Id/Iq, Момент, Скорость")
+            ui_log("[UI] Sent a FakeCAN from the fields: Id/Iq, Torque, Speed")
         except Exception as e:
             ui_log(f"[Ошибка отправки FakeCAN] {e}")
 
@@ -294,15 +318,26 @@ def create_gui():
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
     main_frame = ttk.Frame(notebook)
-    notebook.add(main_frame, text="Управление")
+    notebook.add(main_frame, text="Control")
     ind_frame = ttk.Frame(notebook)
-    notebook.add(ind_frame, text="Индикация")
+    notebook.add(ind_frame, text="Indication")
     log_frame = ttk.Frame(notebook)
-    notebook.add(log_frame, text="Журнал")
+    notebook.add(log_frame, text="Logbook")
+
+    notebook.enable_traversal()
 
     # Вкладка 1
     main_inner = ttk.Frame(main_frame)
     main_inner.pack(fill="both", expand=True)
+
+    for i in range(3):
+        main_inner.grid_columnconfigure(i, weight=1)   # 2 левые колонки растягиваются
+    main_inner.grid_columnconfigure(2, weight=0)       # правая колонка под слайдеры
+    for r in range(10):
+        main_inner.grid_rowconfigure(r, weight=0)
+
+    controls_container = ttk.Frame(main_inner)
+    controls_container.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
 
     # Сетка: 3 колонки (левая/средняя/правая-«слайдеры»)
     for col in (0, 1):
@@ -314,7 +349,7 @@ def create_gui():
 
 
         # --- Новый переключатель режима ---
-    mode_frame = ttk.LabelFrame(main_inner, text="Режим управления")
+    mode_frame = ttk.LabelFrame(main_inner, text="Control mode")
     mode_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
 
     # текущее значение режима: "currents" (токи) или "speed" (частота)
@@ -371,12 +406,12 @@ def create_gui():
 
 
     # Кнопки управления
-    control_frame = ttk.Frame(main_inner)
+    control_frame = ttk.Frame(controls_container)
     control_frame.pack(padx=10, pady=10, fill="x")
 
     # ====== Блок "Токи (Id/Iq)" ======
     currents_frame = ttk.LabelFrame(main_inner, text="Токи (Id/Iq)")
-    currents_frame.place(x=10, y=120, width=340, height=120)
+    currents_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
 
     En_Is_var = tk.IntVar(value=1)
     Id_var = tk.StringVar(value="-0.5")
@@ -390,7 +425,7 @@ def create_gui():
 
     # ====== Блок "Лимиты" ======
     limits_frame = ttk.LabelFrame(main_inner, text="Лимиты")
-    limits_frame.place(x=360, y=120, width=360, height=120)
+    limits_frame.grid(  row=1, column=1, padx=10, pady=10, sticky="nsew")
 
     M_min_var      = tk.StringVar(value="-50.0")
     M_max_var      = tk.StringVar(value="400.0")
@@ -411,8 +446,8 @@ def create_gui():
 
     # Доп. команды
     # ==== КНОПКИ ДЕЙСТВИЙ ====
-    extra_frame = ttk.Frame(main_inner)
-    extra_frame.pack(padx=10, pady=(0,10), fill="x")
+    extra_frame = ttk.Frame(controls_container)
+    extra_frame.pack(padx=0, pady=(6, 0), fill="x")
 
     # Применить режим (замена старой SendControl-кнопки)
     ttk.Button(
@@ -434,39 +469,26 @@ def create_gui():
 
     
     # Параметры стенда
-    params_frame = ttk.LabelFrame(main_inner, text="Параметры стенда")
-    params_frame.place(x=10, y=260, width=700, height=200)
+    params_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_parameters")
+    params_frame.grid(  row=2, column=0, columnspan=2, padx=10, pady=0, sticky="nsew")
     params = [
-        "Скорость вращения",
-        "Момент (Ms)",       # новый
-        "Ток постоянного (Idc)", # новый
-        "Ток статора d (Isd)",   # новый
-        "Температура статора",
-        "Температура ротора",
-        "Ud", "Uq", "Id", "Iq",
-        "Emf", "Welectrical", "motorRs", "Wmechanical"
+        "Speed вращения",
+        "Torque (Ms)",       # новый
+        "Constant current (Idc)", # новый
+        "Stator currentd (Isd)",   # новый
+        "stator temperature",
+        "Rotor temperature",
     ]
+    
 
     # В create_gui(), после создания params_frame и entry_vars
 
     # Новый блок для MCU_VCU_1 параметров (Ms, ns, Idc, Isd)
-    vcu_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_1 параметры")
-    vcu_frame.place(x=10, y=470, width=340, height=130)
+  
 
-    vcu_params = {
-        "Ms": "Момент (Ms)",
-        "ns": "Скорость вращения",
-        "Idc": "Ток постоянного (Idc)",
-        "Isd": "Ток статора d (Isd)"
-    }
+ 
 
-    vcu_vars = {}
-    for i, (key, label) in enumerate(vcu_params.items()):
-        ttk.Label(vcu_frame, text=label + ":").grid(row=i, column=0, sticky="e", padx=5, pady=5)
-        var = tk.StringVar()
-        entry = ttk.Entry(vcu_frame, textvariable=var, width=20, state="readonly")
-        entry.grid(row=i, column=1, padx=5, pady=5)
-        vcu_vars[key] = var
+    
 
     entry_vars = {}
     for i, param in enumerate(params):
@@ -478,7 +500,7 @@ def create_gui():
 
     # CAN - используем заранее созданные переменные
     can_frame = ttk.LabelFrame(main_inner, text="Tx / Rx CAN")
-    can_frame.place(x=10, y=390, width=710, height=140)
+    can_frame.grid(     row=3, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
     
     # Заголовки
     headers = ["id"] + [f"data{i}" for i in range(8)] + ["len", "flags", "ts"]
@@ -500,7 +522,7 @@ def create_gui():
     
     # Блок MCU_CurrentVoltage
     voltage_frame = ttk.LabelFrame(main_inner, text="MCU Current & Voltage")
-    voltage_frame.place(x=10, y=470, width=340, height=120)
+    voltage_frame.grid( row=4, column=1, padx=10, pady=10, sticky="nsew")
 
     voltage_params = ["Ud", "Uq", "Id", "Iq"]
     for i, param in enumerate(voltage_params):
@@ -512,7 +534,7 @@ def create_gui():
 
     # Блок MCU_FluxParams
     flux_frame = ttk.LabelFrame(main_inner, text="MCU Flux Parameters")
-    flux_frame.place(x=360, y=470, width=340, height=120)
+    flux_frame.grid(    row=4, column=0, padx=10, pady=10, sticky="nsew")
 
     flux_params = ["Emf", "Welectrical", "motorRs", "Wmechanical"]
     for i, param in enumerate(flux_params):
@@ -523,7 +545,9 @@ def create_gui():
         entry_vars[param] = var
     
     slider_frame = ttk.Frame(main_inner, width=180, height=450)
-    slider_frame.place(x=750, y=60)
+    slider_frame.grid(  row=0, column=2, rowspan=6, padx=10, pady=10, sticky="ns")
+
+
     slider_frame.pack_propagate(False)
     speed_var = tk.DoubleVar()
     torque_var = tk.DoubleVar()
@@ -545,11 +569,6 @@ def create_gui():
     torque_entry = ttk.Entry(slider_frame, textvariable=torque_var, width=6, state="disabled")
     torque_entry.place(x=100, y=350)
 
-    # --- Переключатель режима (новый) ---
-    mode_frame = ttk.LabelFrame(main_inner, text="Режим управления")
-    mode_frame.place(x=10, y=10, width=710, height=90)
-
-    mode_var = tk.StringVar(value="currents")
 
     def update_mode_controls():
         if mode_var.get() == "speed":
@@ -622,6 +641,57 @@ def create_gui():
 
     # Вкладка 3: лог
     log_box.pack(in_=log_frame, fill="both", padx=10, pady=10, expand=True)
+
+    # === Logbook UI ===
+    logbook_top = ttk.Frame(log_frame)
+    logbook_top.pack(fill="both", expand=True, padx=10, pady=(10,5))
+
+    # toolbar
+    lb_toolbar = ttk.Frame(logbook_top)
+    lb_toolbar.pack(fill="x", pady=(0,6))
+
+    def toggle_logging():
+        ui_log("📒 logging:", "ON" if log_enabled.get() else "OFF")
+
+    ttk.Checkbutton(lb_toolbar, text="Log telemetry", variable=log_enabled,
+                    command=toggle_logging).pack(side="left")
+
+    def clear_log():
+        log_rows.clear()
+        for i in telem_tree.get_children():
+            telem_tree.delete(i)
+        ui_log("🧹 journal cleared")
+
+    def export_csv():
+        # простой экспорт в файл рядом с клиентом
+        fname = f"logbook_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        with open(fname, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(TELEM_COLUMNS)
+            for row in log_rows:
+                w.writerow([row.get(k, "") for k in TELEM_COLUMNS])
+        ui_log(f"💾 exported: {fname}")
+
+    ttk.Button(lb_toolbar, text="Clear", command=clear_log).pack(side="right", padx=4)
+    ttk.Button(lb_toolbar, text="Export CSV", command=export_csv).pack(side="right", padx=4)
+
+    # таблица
+    columns = TELEM_COLUMNS
+    telem_tree = ttk.Treeview(logbook_top, columns=columns, show="headings", height=12)
+    for col in columns:
+        telem_tree.heading(col, text=col)
+        telem_tree.column(col, width=100, anchor="center")
+
+    ys = ttk.Scrollbar(logbook_top, orient="vertical", command=telem_tree.yview)
+    telem_tree.configure(yscroll=ys.set)
+
+    telem_tree.pack(side="left", fill="both", expand=True)
+    ys.pack(side="right", fill="y")
+
+    # нижняя панель с текстовым логом событий
+    log_events = ttk.LabelFrame(log_frame, text="Events")
+    log_events.pack(fill="both", expand=True, padx=10, pady=(0,10))
+    log_box.pack(in_=log_events, fill="both", padx=6, pady=6, expand=True)
 
     def _init_mode():
         set_mode("currents")   # или "speed"

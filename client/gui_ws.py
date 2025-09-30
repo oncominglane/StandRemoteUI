@@ -4,6 +4,9 @@ import json
 import time
 from datetime import datetime
 import csv
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+from collections import deque
 
 # ---------- Глобальные настройки UI ----------
 APP_FONT = ("Segoe UI", 10)
@@ -114,6 +117,18 @@ def create_gui():
         "Ud", "Uq", "Id", "Iq",
         "Emf", "Welectrical", "motorRs", "Wmechanical",
     ]
+
+    # Буферы для трендов (последние N точек)
+    TREND_CAP = 3000  # сколько точек держим на графиках
+    trend_ts   = deque(maxlen=TREND_CAP)  # datetime для оси X
+    trend_ns   = deque(maxlen=TREND_CAP)
+    trend_Ms   = deque(maxlen=TREND_CAP)
+    trend_Idc  = deque(maxlen=TREND_CAP)
+    trend_Isd  = deque(maxlen=TREND_CAP)
+    trend_Ud   = deque(maxlen=TREND_CAP)
+    trend_Uq   = deque(maxlen=TREND_CAP)
+    trend_Id   = deque(maxlen=TREND_CAP)
+    trend_Iq   = deque(maxlen=TREND_CAP)
 
 
     # ==== КНОПОЧНЫЕ ХЭНДЛЕРЫ ====
@@ -233,6 +248,85 @@ def create_gui():
             can_tx_data[10].set(str(frame_data.get("flags", "")))
             can_tx_data[11].set(str(frame_data.get("ts", "")))
 
+    # ===== журнал телеметрии =====
+    def log_telemetry_row(data):
+        """Собрать строку журнала, добавить в буфер и в таблицу."""
+        if not log_enabled.get():
+            return
+
+        row = {}
+        row["ts"] = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        for k in TELEM_COLUMNS:
+            if k == "ts":
+                continue
+            if k in data:
+                row[k] = data[k]
+        # если ничего нового нет — не шумим
+        if len(row) <= 1:
+            return
+
+        log_rows.append(row)
+        if len(log_rows) > max_rows:
+            del log_rows[0]
+            kids = telem_tree.get_children()
+            if kids:
+                telem_tree.delete(kids[0])
+
+        telem_tree.insert("", "end", values=[row.get(k, "") for k in TELEM_COLUMNS])
+
+         # === подпитаем тренды ===
+        now = datetime.now()
+        trend_ts.append(now)
+        if "ns" in data:  trend_ns.append(float(data["ns"]))
+        if "Ms" in data:  trend_Ms.append(float(data["Ms"]))
+        if "Idc" in data: trend_Idc.append(float(data["Idc"]))
+        if "Isd" in data: trend_Isd.append(float(data["Isd"]))
+        if "Ud" in data:  trend_Ud.append(float(data["Ud"]))
+        if "Uq" in data:  trend_Uq.append(float(data["Uq"]))
+        if "Id" in data:  trend_Id.append(float(data["Id"]))
+        if "Iq" in data:  trend_Iq.append(float(data["Iq"]))
+
+    def _update_trends():
+        # ось X — секунды относительно последней точки
+        if not trend_ts:
+            root.after(500, _update_trends)
+            return
+        t0 = trend_ts[-1]
+        xs = [(t - t0).total_seconds() for t in trend_ts]  # идут отрицательные числа (в прошлое)
+
+        # обновляем данные линий
+        if trend_ns:
+            l_ns.set_data(xs[-len(trend_ns):], list(trend_ns))
+            ax1.relim(); ax1.autoscale_view()
+
+        if trend_Ms:
+            l_ms.set_data(xs[-len(trend_Ms):], list(trend_Ms))
+            ax2.relim(); ax2.autoscale_view()
+
+        if trend_Idc:
+            l_idc.set_data(xs[-len(trend_Idc):], list(trend_Idc))
+        if trend_Isd:
+            l_isd.set_data(xs[-len(trend_Isd):], list(trend_Isd))
+        ax3.relim(); ax3.autoscale_view()
+
+        # внизу рисуем Id/Iq и Ud/Uq одним графиком: если нет одних — будут другие
+        if trend_Id:
+            l_id.set_data(xs[-len(trend_Id):], list(trend_Id))
+        if trend_Iq:
+            l_iq.set_data(xs[-len(trend_Iq):], list(trend_Iq))
+        if trend_Ud:
+            l_ud.set_data(xs[-len(trend_Ud):], list(trend_Ud))
+        if trend_Uq:
+            l_uq.set_data(xs[-len(trend_Uq):], list(trend_Uq))
+        ax4.relim(); ax4.autoscale_view()
+
+        # едва заметные подписи оси X
+        for ax in (ax1, ax2, ax3, ax4):
+            ax.set_xlabel("seconds from now")
+
+        canvas.draw_idle()
+        root.after(500, _update_trends)  # ~2 FPS; можно 200мс для плавнее    
+
     def handle_model_data(data):
         field_map = {
             # Параметры стенда
@@ -264,6 +358,9 @@ def create_gui():
         for key in ("Ms", "Idc", "Isd", "ns", "Udc"):
             if key in data:
                 ui_log(f"{key}: {data[key]}")
+        
+        # строка в журнал
+        log_telemetry_row(data)
 
     
     
@@ -305,6 +402,8 @@ def create_gui():
     def on_error(msg):
         root.after(0, lambda: ui_log(f"[ERR] {msg}"))
 
+
+
     # Запускаем WS-клиент
     client = WSClient(WS_URL, on_message, on_status, on_error)
     client.start()
@@ -323,6 +422,40 @@ def create_gui():
     notebook.add(ind_frame, text="Indication")
     log_frame = ttk.Frame(notebook)
     notebook.add(log_frame, text="Logbook")
+    trends_frame = ttk.Frame(notebook)
+    notebook.add(trends_frame, text="Trends")
+
+    # === Trends UI ===
+    trends_container = ttk.Frame(trends_frame)
+    trends_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+    fig = Figure(figsize=(8, 5), dpi=100)
+    ax1 = fig.add_subplot(221)  # Speed (ns)
+    ax2 = fig.add_subplot(222)  # Torque (Ms)
+    ax3 = fig.add_subplot(223)  # Currents (Idc/Isd)
+    ax4 = fig.add_subplot(224)  # dq currents/voltages (Id/Iq or Ud/Uq)
+
+    ax1.set_title("Speed (ns)")
+    ax2.set_title("Torque (Ms)")
+    ax3.set_title("Currents (Idc / Isd)")
+    ax4.set_title("dq (Id/Iq) and Voltages (Ud/Uq)")
+
+    # линии (пустые на старте)
+    l_ns, = ax1.plot([], [])
+    l_ms, = ax2.plot([], [])
+    l_idc, = ax3.plot([], [])
+    l_isd, = ax3.plot([], [])
+    l_id, = ax4.plot([], [])
+    l_iq, = ax4.plot([], [])
+    l_ud, = ax4.plot([], [])
+    l_uq, = ax4.plot([], [])
+
+    for ax in (ax1, ax2, ax3, ax4):
+        ax.grid(True)
+
+    canvas = FigureCanvasTkAgg(fig, master=trends_container)
+    canvas_widget = canvas.get_tk_widget()
+    canvas_widget.pack(fill="both", expand=True)
 
     notebook.enable_traversal()
 
@@ -348,7 +481,7 @@ def create_gui():
         main_inner.rowconfigure(r, weight=1)
 
 
-        # --- Новый переключатель режима ---
+        # ---  переключатель режима ---
     mode_frame = ttk.LabelFrame(main_inner, text="Control mode")
     mode_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
 
@@ -394,10 +527,10 @@ def create_gui():
         update_mode_controls()
 
     # сами «сегменты» — две радиокнопки
-    rb1 = ttk.Radiobutton(mode_frame, text="Токи (Id/Iq)",
+    rb1 = ttk.Radiobutton(mode_frame, text="Currents (Id/Iq)",
                         value="currents", variable=mode_var,
                         command=lambda: set_mode("currents"))
-    rb2 = ttk.Radiobutton(mode_frame, text="Частота (ns)",
+    rb2 = ttk.Radiobutton(mode_frame, text="Frequency (ns)",
                         value="speed", variable=mode_var,
                         command=lambda: set_mode("speed"))
 
@@ -410,7 +543,7 @@ def create_gui():
     control_frame.pack(padx=10, pady=10, fill="x")
 
     # ====== Блок "Токи (Id/Iq)" ======
-    currents_frame = ttk.LabelFrame(main_inner, text="Токи (Id/Iq)")
+    currents_frame = ttk.LabelFrame(main_inner, text="Currents")
     currents_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
 
     En_Is_var = tk.IntVar(value=1)
@@ -441,15 +574,13 @@ def create_gui():
     ttk.Label(limits_frame, text="M_grad_max").grid(row=1, column=0, sticky="e", padx=6, pady=6)
     ttk.Entry(limits_frame, width=10, textvariable=M_grad_max_var).grid(row=1, column=1, sticky="w")
 
-    ttk.Label(limits_frame, text="n_max [об/мин]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
+    ttk.Label(limits_frame, text="n_max [rpm]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
     ttk.Entry(limits_frame, width=10, textvariable=n_max_var).grid(row=1, column=3, sticky="w")
 
     # Доп. команды
-    # ==== КНОПКИ ДЕЙСТВИЙ ====
     extra_frame = ttk.Frame(controls_container)
     extra_frame.pack(padx=0, pady=(6, 0), fill="x")
 
-    # Применить режим (замена старой SendControl-кнопки)
     ttk.Button(
         extra_frame, text="Применить режим", width=18,
         command=set_mode_from_ui
@@ -481,14 +612,8 @@ def create_gui():
     ]
     
 
-    # В create_gui(), после создания params_frame и entry_vars
-
-    # Новый блок для MCU_VCU_1 параметров (Ms, ns, Idc, Isd)
-  
-
- 
-
     
+
 
     entry_vars = {}
     for i, param in enumerate(params):
@@ -522,7 +647,7 @@ def create_gui():
     
     # Блок MCU_CurrentVoltage
     voltage_frame = ttk.LabelFrame(main_inner, text="MCU Current & Voltage")
-    voltage_frame.grid( row=4, column=1, padx=10, pady=10, sticky="nsew")
+    voltage_frame.grid( row=4, column=0, padx=10, pady=10, sticky="nsew")
 
     voltage_params = ["Ud", "Uq", "Id", "Iq"]
     for i, param in enumerate(voltage_params):
@@ -534,7 +659,7 @@ def create_gui():
 
     # Блок MCU_FluxParams
     flux_frame = ttk.LabelFrame(main_inner, text="MCU Flux Parameters")
-    flux_frame.grid(    row=4, column=0, padx=10, pady=10, sticky="nsew")
+    flux_frame.grid(    row=4, column=1, padx=10, pady=10, sticky="nsew")
 
     flux_params = ["Emf", "Welectrical", "motorRs", "Wmechanical"]
     for i, param in enumerate(flux_params):
@@ -544,30 +669,37 @@ def create_gui():
         entry.grid(row=i, column=1, padx=5, pady=3)
         entry_vars[param] = var
     
+    # Правая колонка: слайдеры
     slider_frame = ttk.Frame(main_inner, width=180, height=450)
     slider_frame.grid(  row=0, column=2, rowspan=6, padx=10, pady=10, sticky="ns")
-
-
     slider_frame.pack_propagate(False)
+
     speed_var = tk.DoubleVar()
     torque_var = tk.DoubleVar()
-    ttk.Label(slider_frame, text="Скорость\nоб/мин").place(x=10, y=0)
-    ttk.Label(slider_frame, text="Момент\nН·м").place(x=100, y=0)
+
+    # layout на grid (без .place)
+    slider_frame.grid_columnconfigure(0, weight=1, minsize=80)
+    slider_frame.grid_columnconfigure(1, weight=1, minsize=80)
+    
+    ttk.Label(slider_frame, text="Speed\nrpm").grid(row=0, column=0, pady=(0,4))
+    ttk.Label(slider_frame,  text="Torque\nN*m").grid(    row=0, column=1, pady=(0,4))
+
     speed_slider = ttk.Scale(slider_frame, from_=20000, to=0, variable=speed_var, orient="vertical", length=300)
-    speed_slider.place(x=10, y=40)
+    speed_slider.grid(row=1, column=0, sticky="ns", padx=6, pady=6)
     speed_slider.state(["disabled"])
     speed_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())
-
     make_focusable_scale(speed_slider, speed_var, step=100)
+
     torque_slider = ttk.Scale(slider_frame, from_=500, to=0, variable=torque_var, orient="vertical", length=300)
-    torque_slider.place(x=100, y=40)
+    torque_slider.grid(row=1, column=1, sticky="ns", padx=6, pady=6)
     torque_slider.state(["disabled"])
     torque_slider.bind("<Button-1>", lambda e: torque_slider.focus_set())
     make_focusable_scale(torque_slider, torque_var, step=1.0)
+
     speed_entry = ttk.Entry(slider_frame, textvariable=speed_var, width=6, state="disabled")
-    speed_entry.place(x=10, y=350)
+    speed_entry.grid(row=2, column=0, pady=(4,0))
     torque_entry = ttk.Entry(slider_frame, textvariable=torque_var, width=6, state="disabled")
-    torque_entry.place(x=100, y=350)
+    torque_entry.grid(row=2, column=1, pady=(4,0))
 
 
     def update_mode_controls():
@@ -604,31 +736,9 @@ def create_gui():
 
     speed_slider.bind("<ButtonRelease-1>", _on_speed_released)
     torque_slider.bind("<ButtonRelease-1>", _on_torque_released)
-
-
-    def set_mode(val: str):
-        mode_var.set(val)
-        if val == "currents":
-            # включаем удалёнку, выключаем Kl_15, сразу прокидываем Id/Iq
-            client.send_json_threadsafe({"cmd": "SendControl", "En_Is": True, "Kl_15": False})
-            client.send_json_threadsafe({
-                "cmd": "SendTorque",
-                "En_Is": True,
-                "Isd": float(Id_var.get() or 0.0),
-                "Isq": float(Iq_var.get() or 0.0)
-            })
-            ui_log("[UI] Режим: Токи (Id/Iq) — En_Is=1, Kl_15=0, отправлены текущие Id/Iq")
-        else:
-            # выключаем удалёнку, включаем Kl_15, передаём ns
-            client.send_json_threadsafe({
-                "cmd": "SendControl",
-                "En_Is": False,
-                "Kl_15": True,
-                "ns": float(speed_var.get() or 0.0)
-            })
-            ui_log("[UI] Режим: Частота (ns) — En_Is=0, Kl_15=1, передан ns")
-
-        update_mode_controls()
+    
+    # режим уже создан выше
+    update_mode_controls()
 
     ttk.Radiobutton(mode_frame, text="Токи (Id/Iq)", value="currents",
                     variable=mode_var, command=lambda: set_mode("currents"))\
@@ -639,10 +749,7 @@ def create_gui():
     .grid(row=0, column=1, padx=8, pady=8, sticky="w")
 
 
-    # Вкладка 3: лог
-    log_box.pack(in_=log_frame, fill="both", padx=10, pady=10, expand=True)
-
-    # === Logbook UI ===
+     # === Logbook UI ===
     logbook_top = ttk.Frame(log_frame)
     logbook_top.pack(fill="both", expand=True, padx=10, pady=(10,5))
 
@@ -693,9 +800,16 @@ def create_gui():
     log_events.pack(fill="both", expand=True, padx=10, pady=(0,10))
     log_box.pack(in_=log_events, fill="both", padx=6, pady=6, expand=True)
 
+    # Горячие клавиши для журнала
+    root.bind_all("<Control-l>", lambda e: log_enabled.set(not log_enabled.get()))
+    root.bind_all("<Control-e>", lambda e: export_csv())
+    root.bind_all("<Control-Shift-C>", lambda e: clear_log())
+
     def _init_mode():
         set_mode("currents")   # или "speed"
     root.after(0, _init_mode)
+
+    root.after(500, _update_trends)
 
     root.mainloop()
 

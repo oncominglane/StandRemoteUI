@@ -304,18 +304,9 @@ def create_gui():
     main_inner = ttk.Frame(main_frame)
     main_inner.pack(fill="both", expand=True)
 
-    # Сетка: 3 колонки (левая/средняя/правая-«слайдеры»)
-    for col in (0, 1):
-        main_inner.columnconfigure(col, weight=1)   # растягиваем контент
-    main_inner.columnconfigure(2, weight=0)         # колонка со слайдерами фикс ширины
-    # строки, где большие панели, пусть растягиваются
-    for r in (2, 3):
-        main_inner.rowconfigure(r, weight=1)
-
-
         # --- Новый переключатель режима ---
     mode_frame = ttk.LabelFrame(main_inner, text="Режим управления")
-    mode_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
+    mode_frame.place(x=10, y=10, width=710, height=90)
 
     # текущее значение режима: "currents" (токи) или "speed" (частота)
     mode_var = tk.StringVar(value="currents")

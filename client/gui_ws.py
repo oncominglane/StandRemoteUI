@@ -557,7 +557,7 @@ def create_gui():
     ttk.Entry(currents_frame, width=10, textvariable=Iq_var).grid(row=1, column=3, sticky="w")
 
     # ====== Блок "Лимиты" ======
-    limits_frame = ttk.LabelFrame(main_inner, text="Лимиты")
+    limits_frame = ttk.LabelFrame(main_inner, text="Limits")
     limits_frame.grid(  row=1, column=1, padx=10, pady=10, sticky="nsew")
 
     M_min_var      = tk.StringVar(value="-50.0")
@@ -740,11 +740,11 @@ def create_gui():
     # режим уже создан выше
     update_mode_controls()
 
-    ttk.Radiobutton(mode_frame, text="Токи (Id/Iq)", value="currents",
+    ttk.Radiobutton(mode_frame, text="Currents (Id/Iq)", value="currents",
                     variable=mode_var, command=lambda: set_mode("currents"))\
     .grid(row=0, column=0, padx=8, pady=8, sticky="w")
 
-    ttk.Radiobutton(mode_frame, text="Частота (ns)", value="speed",
+    ttk.Radiobutton(mode_frame, text="Frequency (ns)", value="speed",
                     variable=mode_var, command=lambda: set_mode("speed"))\
     .grid(row=0, column=1, padx=8, pady=8, sticky="w")
 

@@ -517,12 +517,12 @@ def create_gui():
     def handle_model_data(data):
         field_map = {
             # Параметры стенда
-            "ns": "Скорость вращения",
-            "Ms": "Момент (Ms)",
-            "Idc": "Ток постоянного (Idc)",
-            "Isd": "Ток статора d (Isd)",
-            "MCU_IGBTTempU": "Температура статора",
-            "MCU_TempCurrStr": "Температура ротора",
+            "ns": "Speed rotation",
+            "Ms": "Torque (Ms)",
+            "Idc": "direct current (Idc)",
+            "Isd": "Stator current d (Isd)",
+            "MCU_IGBTTempU": "IGBT temperature",
+            "MCU_TempCurrStr": "Stator temperature",
 
             # MCU Current & Voltage
             "Ud": "Ud",
@@ -866,17 +866,14 @@ def create_gui():
     params_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_parameters")
     params_frame.grid(  row=2, column=0, columnspan=2, padx=10, pady=0, sticky="nsew")
     params = [
-        "Скорость вращения",
-        "Момент (Ms)",
-        "Ток постоянного (Idc)",
-        "Ток статора d (Isd)",
-        "Температура статора",
-        "Температура ротора",
+        "Speed rotation",
+        "Torque (Ms)",        # было: "Момент (Ms)"
+        "direct current (Idc)",   # было: "Ток постоянного (Idc)"
+        "Stator current d (Isd)",  # было: "Ток статора d (Isd)"
+        "IGBT temperature", # было: "Температура статора"
+        "Stator temperature",  # было: "Температура ротора"
     ]
     
-
-    
-
 
     entry_vars = {}
     for i, param in enumerate(params):

@@ -58,7 +58,7 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
         printCANMessage(msg, std::cout, 0);
     }
     switch (msg.id) {
-        case 0x300: { // MCU_VCU_1 (BO_ 122)
+        case 0x7a: { // MCU_VCU_1 (BO_ 122)
             float actualTorque = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 7, 11)) - 1024;
             float udcCurr = UnpackSignalFromBytes(msg.data, 12, 10); // No offset
             float isCurr = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 18, 11)) - 1024;
@@ -74,7 +74,7 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
-        case 0x47A: { // MCU_Temperature1 (BO_ 123)
+        case 0x7b: { // MCU_Temperature1 (BO_ 123)
             data.MCU_IGBTTempU   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 7, 8)) - 50;
             data.MCU_IGBTTempV   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 15, 8)) - 50;
             data.MCU_IGBTTempW   = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 23, 8)) - 50;
@@ -86,7 +86,7 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
-        case 0x47B: { // MCU_Temperature2 (BO_ 124)
+        case 0x7c: { // MCU_Temperature2 (BO_ 124)
             data.MCU_TempCurrCool = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 7, 8)) - 50;
             data.MCU_TempCurrStr  = static_cast<int8_t>(UnpackSignalFromBytes(msg.data, 31, 8)) - 50;
 
@@ -95,7 +95,7 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
-        case 0x475: { // MCU_DeratingStatus (BO_ 709)
+        case 0x2c5: { // MCU_DeratingStatus (BO_ 709)
             data.M_max = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 11, 11)) - 1024;
             data.M_min = static_cast<int32_t>(UnpackSignalFromBytes(msg.data, 16, 11)) - 1024;
             // M_grad_max не существует в DBC, пропускаем
@@ -105,20 +105,20 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
-        case 0x2C6: { // MCU_FailureCode (BO_ 710)
+        case 0x2c6: { // MCU_FailureCode (BO_ 710)
             uint8_t failCode = UnpackSignalFromBytes(msg.data, 7, 3);
             std::cout << "[RX] Error Level (MCU_FailCode1): " << (int)failCode << std::endl;
             break;
         }
 
-        case 0x49A: { // MCU_SoftwareNumber (BO_ 1178)
+        case 0x49a: { // MCU_SoftwareNumber (BO_ 1178)
             uint16_t codeVer = UnpackSignalFromBytes(msg.data, 7, 16);
             data.MCU_SW_ver = "v" + std::to_string(codeVer);
             std::cout << "[RX] MCU_SW_ver=" << data.MCU_SW_ver << std::endl;
             break;
         }
 
-        case 0x4F7: { // MCU_FluxParams (BO_ 127)
+        case 0x7f: { // MCU_FluxParams (BO_ 127)
             data.Emf          = static_cast<float>(UnpackSignalFromBytes(msg.data, 7, 16));
             data.Welectrical  = static_cast<float>(UnpackSignalFromBytes(msg.data, 23, 16));
             data.motorRs      = static_cast<float>(UnpackSignalFromBytes(msg.data, 39, 16));
@@ -131,7 +131,7 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
-        case 0x4F6: { // MCU_CurrentVoltage (BO_ 126)
+        case 0x7e: { // MCU_CurrentVoltage (BO_ 126)
             data.Ud = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 7, 16));
             data.Uq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 23, 16));
             data.Id = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 39, 16));

@@ -7,11 +7,32 @@ import csv
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from collections import deque
+import math
 
 # ---------- Глобальные настройки UI ----------
 APP_FONT = ("Segoe UI", 10)
 MONO_FONT = ("Cascadia Mono", 9)  # или "Consolas"
 PAD = 8
+
+# === Ld/Lq online compute config ===
+DEFAULT_RS_OHMS = 0.05  # поставьте ваш Rs по умолчанию, если не приходит из телеметрии
+DEFAULT_POLE_PAIRS = None  # можно задать число пар полюсов, если не приходит (например, 4)
+
+# Поля, из которых пробуем взять значения (alias-ы на случай разных имён в JSON)
+FIELD_ALIASES = {
+    "Ud": ["Ud", "u_d", "U_d"],
+    "Uq": ["Uq", "u_q", "U_q"],
+    "Id": ["Id", "i_d", "I_d"],
+    "Iq": ["Iq", "i_q", "I_q"],
+    "Welectrical": ["Welectrical", "omega_e", "w_e"],
+    "Wmechanical": ["Wmechanical", "omega_m", "w_m"],
+    "motorEmfCalc": ["motorEmfCalc", "emf", "E_back"],
+    "Rs": ["motorRs", "Rs", "R_s", "motorParams.motorRs"],
+    "polePairs": ["polePairs", "p", "poles_pairs"],
+}
+
+map_rpm = []
+
 
 def init_style(dark=False):
     style = ttk.Style()
@@ -118,6 +139,34 @@ def create_gui():
         "Emf", "Welectrical", "motorRs", "Wmechanical",
     ]
 
+    # === Ld/Lq online compute config ===
+    DEFAULT_RS_OHMS = 0.05          # Ваш Rs по умолчанию, если не приходит в телеметрии
+    DEFAULT_POLE_PAIRS = None       # Число пар полюсов, если не приходит (например, 4)
+
+    # Алиасы названий полей на случай разных имён в JSON
+    FIELD_ALIASES = {
+        "Ud": ["Ud", "u_d", "U_d"],
+        "Uq": ["Uq", "u_q", "U_q"],
+        "Id": ["Id", "i_d", "I_d"],
+        "Iq": ["Iq", "i_q", "I_q"],
+        "Welectrical": ["Welectrical", "omega_e", "w_e"],
+        "Wmechanical": ["Wmechanical", "omega_m", "w_m"],
+        "motorEmfCalc": ["motorEmfCalc", "emf", "E_back"],
+        "Rs": ["motorRs", "Rs", "R_s", "motorParams.motorRs"],
+        "polePairs": ["polePairs", "p", "poles_pairs"],
+    }
+
+    def _get_float(data: dict, key: str) -> float | None:
+        names = FIELD_ALIASES.get(key, [key])
+        for name in names:
+            if name in data and data[name] is not None:
+                try:
+                    return float(data[name])
+                except Exception:
+                    pass
+        return None
+
+
     # Буферы для трендов (последние N точек)
     TREND_CAP = 3000  # сколько точек держим на графиках
     trend_ts   = deque(maxlen=TREND_CAP)  # datetime для оси X
@@ -129,6 +178,18 @@ def create_gui():
     trend_Uq   = deque(maxlen=TREND_CAP)
     trend_Id   = deque(maxlen=TREND_CAP)
     trend_Iq   = deque(maxlen=TREND_CAP)
+
+    # --- NEW: буферы для карт (maps) ---
+    map_Id   = deque(maxlen=TREND_CAP)   # X для Ld(Id)
+    map_Ld   = deque(maxlen=TREND_CAP)   # Y для Ld(Id)
+    map_Iq   = deque(maxlen=TREND_CAP)   # X для Lq(Iq)
+    map_Lq   = deque(maxlen=TREND_CAP)   # Y для Lq(Iq)
+
+    map_ns   = deque(maxlen=TREND_CAP)   # X для мом./мощн. от оборотов (rpm)
+    map_Ms   = deque(maxlen=TREND_CAP)   # момент (Н·м)
+    map_Pmech= deque(maxlen=TREND_CAP)   # мех. мощность (кВт)
+    map_Pelec= deque(maxlen=TREND_CAP)   # эл. мощность (кВт) — опционально
+
 
 
     # ==== КНОПОЧНЫЕ ХЭНДЛЕРЫ ====
@@ -272,6 +333,132 @@ def create_gui():
             if kids:
                 telem_tree.delete(kids[0])
 
+        # --- NEW: карты Ld/Lq при наличии ---
+        if "Id" in data and "Ld" in data:
+            try:
+                map_Id.append(float(data["Id"]))
+                map_Ld.append(float(data["Ld"]))
+            except Exception:
+                pass
+
+        if "Iq" in data and "Lq" in data:
+            try:
+                map_Iq.append(float(data["Iq"]))
+                map_Lq.append(float(data["Lq"]))
+            except Exception:
+                pass
+
+        # --- NEW: момент/мощность от оборотов ---
+        # rpm = ns; мех. угл. скорость Wmechanical (рад/с) приходит в данных (если есть)
+        rpm = None
+        if "ns" in data:
+            try: rpm = float(data["ns"])
+            except Exception: rpm = None
+
+        Ms = None
+        if "Ms" in data:
+            try: Ms = float(data["Ms"])
+            except Exception: Ms = None
+
+        Wm = None
+        if "Wmechanical" in data:
+            try: Wm = float(data["Wmechanical"])
+            except Exception: Wm = None
+
+        if rpm is not None:
+            map_ns.append(rpm)
+            # момент
+            if Ms is not None:
+                map_Ms.append(Ms)
+            # P_mech = Ms * Wmechanical (Вт) -> кВт
+            if Ms is not None and Wm is not None:
+                map_Pmech.append(Ms * Wm / 1000.0)
+
+        # P_elec = Ud*Id + Uq*Iq (Вт) -> кВт, если все есть
+        if all(k in data for k in ("Ud","Uq","Id","Iq")):
+            try:
+                Ud = float(data["Ud"]); Uq = float(data["Uq"])
+                Idv = float(data["Id"]); Iqv = float(data["Iq"])
+                map_Pelec.append((Ud*Idv + Uq*Iqv)/1000.0)
+                # чтобы оси X совпадали — если rpm неизвестен, подкинем NaN (не рисуется)
+                if "ns" not in data:
+                    map_ns.append(float("nan"))
+                    map_Ms.append(float("nan"))
+                    map_Pmech.append(float("nan"))
+            except Exception:
+                pass
+
+                # ===== Ld/Lq online calc -> карты Ld(Id) / Lq(Iq) =====
+        Ud  = _get_float(data, "Ud")
+        Uq  = _get_float(data, "Uq")
+        Idv = _get_float(data, "Id")
+        Iqv = _get_float(data, "Iq")
+        we  = _get_float(data, "Welectrical")
+        wm  = _get_float(data, "Wmechanical")
+        emf = _get_float(data, "motorEmfCalc")
+        Rs  = _get_float(data, "Rs") or DEFAULT_RS_OHMS
+        pp  = _get_float(data, "polePairs") or DEFAULT_POLE_PAIRS
+
+        # если нет электрической скорости, но есть мех. и пары полюсов — восстановим
+        if we is None and (wm is not None) and (pp is not None):
+            we = wm * pp
+
+        # потокосцепление из ЭДС и электрической скорости
+        psi_f = None
+        if emf is not None and we not in (None, 0.0):
+            psi_f = emf / we
+
+        # --- Lq из формулы: Lq = (Ud - Rs*Id) / (we*Iq)
+        if all(v is not None for v in (Ud, Idv, Iqv, we, Rs)) and Iqv not in (None, 0.0) and we != 0.0:
+            try:
+                Lq_val = (Ud - Rs * Idv) / (we * Iqv)
+                map_Iq.append(Iqv)      # X: Iq
+                map_Lq.append(Lq_val)   # Y: Lq
+            except Exception:
+                pass
+
+        # --- Ld из формулы: Ld = (Uq - Rs*Iq - we*psi_f) / (we*Id)
+        if all(v is not None for v in (Uq, Idv, Iqv, we, Rs, psi_f)) and Idv not in (None, 0.0) and we != 0.0:
+            try:
+                Ld_val = (Uq - Rs * Iqv - we * psi_f) / (we * Idv)
+                map_Id.append(Idv)      # X: Id
+                map_Ld.append(Ld_val)   # Y: Ld
+            except Exception:
+                pass
+
+        # ===== Момент/мощность от оборотов -> карты Torque/Power vs RPM =====
+        # RPM из ns, либо из wm (рад/с) -> rpm = wm * 60 / (2*pi)
+        rpm = None
+        if "ns" in data:
+            try:
+                rpm = float(data["ns"])
+            except Exception:
+                rpm = None
+        if rpm is None and wm is not None:
+            try:
+                rpm = wm * 60.0 / (2.0 * math.pi)
+            except Exception:
+                rpm = None
+
+        Ms = None
+        if "Ms" in data:
+            try:
+                Ms = float(data["Ms"])
+            except Exception:
+                Ms = None
+
+        if rpm is not None:
+            map_rpm.append(rpm)
+            if Ms is not None:
+                map_Ms.append(Ms)
+            if Ms is not None and wm is not None:
+                map_Pmech.append(Ms * wm / 1000.0)   # Вт -> кВт
+
+        if all(v is not None for v in (Ud, Uq, Idv, Iqv)):
+            map_Pelec.append((Ud * Idv + Uq * Iqv) / 1000.0)  # Вт -> кВт
+
+
+
         telem_tree.insert("", "end", values=[row.get(k, "") for k in TELEM_COLUMNS])
 
          # === подпитаем тренды ===
@@ -402,14 +589,6 @@ def create_gui():
     def on_error(msg):
         root.after(0, lambda: ui_log(f"[ERR] {msg}"))
 
-
-
-    # Запускаем WS-клиент
-    client = WSClient(WS_URL, on_message, on_status, on_error)
-    client.start()
-    
-    root.protocol("WM_DELETE_WINDOW", lambda: (client.stop(), root.destroy()))
-
     root.bind("<Up>", on_arrow_key)
     root.bind("<Down>", on_arrow_key)
 
@@ -428,6 +607,46 @@ def create_gui():
     # === Trends UI ===
     trends_container = ttk.Frame(trends_frame)
     trends_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # --- NEW: вкладка "Maps" ---
+    maps_frame = ttk.Frame(notebook)
+    notebook.add(maps_frame, text="Maps")
+
+    maps_container = ttk.Frame(maps_frame)
+    maps_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+    fig_maps = Figure(figsize=(8, 5), dpi=100)
+    ax5a = fig_maps.add_subplot(221)  # Ld(Id)
+    ax5b = fig_maps.add_subplot(222)  # Lq(Iq)
+    ax6  = fig_maps.add_subplot(212)  # Torque & Power vs RPM (двойная ось Y)
+
+    ax5a.set_title("Ld vs Id"); ax5a.set_xlabel("Id, A"); ax5a.set_ylabel("Ld, H"); ax5a.grid(True)
+    ax5b.set_title("Lq vs Iq"); ax5b.set_xlabel("Iq, A"); ax5b.set_ylabel("Lq, H"); ax5b.grid(True)
+    ax6.set_title("Torque & Power vs RPM"); ax6.set_xlabel("RPM"); ax6.grid(True)
+    ax6_right = ax6.twinx()
+    ax6.set_ylabel("Torque, N·m")
+    ax6_right.set_ylabel("Power, kW")
+
+    # Примитивы
+    sc_ld = ax5a.plot([], [], linestyle="", marker=".", markersize=3)[0]
+    sc_lq = ax5b.plot([], [], linestyle="", marker=".", markersize=3)[0]
+    ln_torque, = ax6.plot([], [], label="Torque (N·m)")
+    ln_pmech,  = ax6_right.plot([], [], label="P_mech (kW)")
+    ln_pelec,  = ax6_right.plot([], [], label="P_elec (kW)", linestyle="--")
+
+    # Общая легенда по обеим осям
+    handles = [ln_torque, ln_pmech, ln_pelec]
+    ax6.legend(handles, [h.get_label() for h in handles], loc="best")
+
+    canvas_maps = FigureCanvasTkAgg(fig_maps, master=maps_container)
+    canvas_maps.get_tk_widget().pack(fill="both", expand=True)
+
+    # Запускаем WS-клиент
+    client = WSClient(WS_URL, on_message, on_status, on_error)
+    client.start()
+    
+    root.protocol("WM_DELETE_WINDOW", lambda: (client.stop(), root.destroy()))
+
 
     fig = Figure(figsize=(8, 5), dpi=100)
     ax1 = fig.add_subplot(221)  # Speed (ns)
@@ -456,6 +675,50 @@ def create_gui():
     canvas = FigureCanvasTkAgg(fig, master=trends_container)
     canvas_widget = canvas.get_tk_widget()
     canvas_widget.pack(fill="both", expand=True)
+
+    # --- NEW: вкладка "Maps" ---
+    # --- NEW: вкладка "Maps" ---
+    maps_frame = ttk.Frame(notebook)
+    notebook.add(maps_frame, text="Maps")
+
+    maps_container = ttk.Frame(maps_frame)
+    maps_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+    fig_maps = Figure(figsize=(8,5), dpi=100)
+    ax5a = fig_maps.add_subplot(221)  # Ld(Id)
+    ax5b = fig_maps.add_subplot(222)  # Lq(Iq)
+    ax6  = fig_maps.add_subplot(212)  # Torque & Power vs RPM (с двойной осью Y)
+
+    ax5a.set_title("Ld vs Id")
+    ax5a.set_xlabel("Id, A"); ax5a.set_ylabel("Ld, H")
+    ax5a.grid(True)
+
+    ax5b.set_title("Lq vs Iq")
+    ax5b.set_xlabel("Iq, A"); ax5b.set_ylabel("Lq, H")
+    ax5b.grid(True)
+
+    ax6.set_title("Torque & Power vs RPM")
+    ax6.set_xlabel("RPM"); ax6.grid(True)
+    ax6_right = ax6.twinx()
+    ax6.set_ylabel("Torque, N·m")     # левая ось
+    ax6_right.set_ylabel("Power, kW") # правая ось
+
+    # линии/точки (пустые на старте)
+    sc_ld = ax5a.plot([], [], linestyle="", marker=".", markersize=3)[0]
+    sc_lq = ax5b.plot([], [], linestyle="", marker=".", markersize=3)[0]
+
+    ln_torque, = ax6.plot([], [], label="Torque (N·m)")
+    ln_pmech,  = ax6_right.plot([], [], label="P_mech (kW)")
+    ln_pelec,  = ax6_right.plot([], [], label="P_elec (kW)", linestyle="--")
+
+    # легенда — соберём хэндлы с обеих осей
+    handles = [ln_torque]
+    handles_right = [ln_pmech, ln_pelec]
+    ax6.legend(handles + handles_right, [h.get_label() for h in handles + handles_right], loc="best")
+
+    canvas_maps = FigureCanvasTkAgg(fig_maps, master=maps_container)
+    canvas_maps.get_tk_widget().pack(fill="both", expand=True)
+
 
     notebook.enable_traversal()
 
@@ -807,9 +1070,68 @@ def create_gui():
 
     def _init_mode():
         set_mode("currents")   # или "speed"
+
+    # --- NEW: обновление вкладки Maps ---
+
+    # Ld(Id)
+    if map_Id and map_Ld:
+        # длина по минимальному
+        n = min(len(map_Id), len(map_Ld))
+        sc_ld.set_data(list(map_Id)[-n:], list(map_Ld)[-n:])
+        ax5a.relim(); ax5a.autoscale_view()
+
+    # Lq(Iq)
+    if map_Iq and map_Lq:
+        n = min(len(map_Iq), len(map_Lq))
+        sc_lq.set_data(list(map_Iq)[-n:], list(map_Lq)[-n:])
+        ax5b.relim(); ax5b.autoscale_view()
+
+    # Torque & Power vs RPM
+    if map_ns:
+        xs = list(map_ns)
+        if map_Ms:
+            ln_torque.set_data(xs[-len(map_Ms):], list(map_Ms))
+        if map_Pmech:
+            ln_pmech.set_data(xs[-len(map_Pmech):], list(map_Pmech))
+        if map_Pelec:
+            ln_pelec.set_data(xs[-len(map_Pelec):], list(map_Pelec))
+
+        ax6.relim(); ax6.autoscale_view()
+        ax6_right.relim(); ax6_right.autoscale_view()
+
+    canvas_maps.draw_idle()
+
     root.after(0, _init_mode)
 
     root.after(500, _update_trends)
+
+        # --- UPDATE Maps ---
+
+        # Ld(Id)
+    if map_Id and map_Ld:
+        n = min(len(map_Id), len(map_Ld))
+        sc_ld.set_data(list(map_Id)[-n:], list(map_Ld)[-n:])
+        ax5a.relim(); ax5a.autoscale_view()
+
+        # Lq(Iq)
+    if map_Iq and map_Lq:
+        n = min(len(map_Iq), len(map_Lq))
+        sc_lq.set_data(list(map_Iq)[-n:], list(map_Lq)[-n:])
+        ax5b.relim(); ax5b.autoscale_view()
+
+        # Torque & Power vs RPM (общая ось X = rpm)
+    if map_rpm:
+        xs = list(map_rpm)
+        if map_Ms:
+            ln_torque.set_data(xs[-len(map_Ms):], list(map_Ms))
+        if map_Pmech:
+            ln_pmech.set_data(xs[-len(map_Pmech):], list(map_Pmech))
+        if map_Pelec:
+            ln_pelec.set_data(xs[-len(map_Pelec):], list(map_Pelec))
+        ax6.relim(); ax6.autoscale_view()
+        ax6_right.relim(); ax6_right.autoscale_view()
+    canvas_maps.draw_idle()
+
 
     root.mainloop()
 

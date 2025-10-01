@@ -120,8 +120,6 @@ void CommandSender::sendLimitCommand(CANInterface& can, const DataModel& data) {
 void CommandSender::sendTorqueCommand(CANInterface& can, const DataModel& data) {
     uint8_t payload[8] = {0};
 
-    std::cout << "Id: " << data.Isd << "    Iq: " << data.Isq << std::endl;
-
     // 1. VCU_IdCommand: 13 бит, 0.1 масштаб, -320 смещение, старт с 7 бита
     int32_t id_raw = static_cast<int32_t>((data.Isd + 320.0f) * 10.0f);
     PackSignalToBytes(payload, id_raw, 7, 13);
@@ -129,6 +127,8 @@ void CommandSender::sendTorqueCommand(CANInterface& can, const DataModel& data) 
     // 2. VCU_IqCommand: 13 бит, 0.1 масштаб, -320 смещение, старт с 23 бита
     int32_t iq_raw = static_cast<int32_t>((data.Isq + 320.0f) * 10.0f);
     PackSignalToBytes(payload, iq_raw, 23, 13);
+
+    std::cout << "Id: " << id_raw << "    Iq: " << iq_raw << std::endl;
 
     // 3. VCU_CurrentCommandEnable: 1 бит, старт с 39
     PackSignalToBytes(payload, (data.En_Is) ? 1 : 0, 39, 1);

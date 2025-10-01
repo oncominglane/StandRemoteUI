@@ -866,12 +866,12 @@ def create_gui():
     params_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_parameters")
     params_frame.grid(  row=2, column=0, columnspan=2, padx=10, pady=0, sticky="nsew")
     params = [
-        "Speed вращения",
-        "Torque (Ms)",       # новый
-        "Constant current (Idc)", # новый
-        "Stator currentd (Isd)",   # новый
-        "stator temperature",
-        "Rotor temperature",
+        "Скорость вращения",
+        "Момент (Ms)",
+        "Ток постоянного (Idc)",
+        "Ток статора d (Isd)",
+        "Температура статора",
+        "Температура ротора",
     ]
     
 

@@ -31,6 +31,10 @@ FIELD_ALIASES = {
     "polePairs": ["polePairs", "p", "poles_pairs"],
 }
 
+# ——— Маппинг коробки передач (по DBC VcuActualGear) ———
+GEAR_MAP = {"D": 4, "R": 3, "N": 2}
+REV_GEAR_MAP = {v: k for k, v in GEAR_MAP.items()}
+
 map_rpm = []
 
 
@@ -746,7 +750,30 @@ def create_gui():
 
         # ---  переключатель режима ---
     mode_frame = ttk.LabelFrame(main_inner, text="Control mode")
-    mode_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
+    mode_frame.grid(row=0, column=0, columnspan=1, padx=10, pady=10, sticky="ew")
+
+
+    # ——— Рамка выбора передачи ———
+    gear_frame = ttk.LabelFrame(main_inner, text="Gear (D/R/N)")
+    gear_frame.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+
+    gear_var = tk.StringVar(value="N")  # стартовое значение — N
+
+    def set_gear_from_ui():
+        sel = gear_var.get()
+        code = GEAR_MAP[sel]
+        client.send_json_threadsafe({
+            "cmd": "SendControl",
+            "GearCtrl": int(code)
+        })
+        ui_log(f"[UI] Gear set to {sel} (code {code})", "UI")
+
+    ttk.Radiobutton(gear_frame, text="D", value="D", variable=gear_var,
+                    command=set_gear_from_ui).grid(row=0, column=0, padx=8, pady=8, sticky="w")
+    ttk.Radiobutton(gear_frame, text="R", value="R", variable=gear_var,
+                    command=set_gear_from_ui).grid(row=0, column=1, padx=8, pady=8, sticky="w")
+    ttk.Radiobutton(gear_frame, text="N", value="N", variable=gear_var,
+                    command=set_gear_from_ui).grid(row=0, column=2, padx=8, pady=8, sticky="w")
 
     # текущее значение режима: "currents" (токи) или "speed" (частота)
     mode_var = tk.StringVar(value="currents")

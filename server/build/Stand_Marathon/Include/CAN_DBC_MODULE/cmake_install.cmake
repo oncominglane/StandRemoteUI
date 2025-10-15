@@ -1,4 +1,4 @@
-# Install script for directory: C:/gvn/StandRemoteUI/server/Stand_Marathon/Include/CAN_DBC_MODULE
+# Install script for directory: C:/Users/n.tulupov/Desktop/StandRemoteUI/server/Stand_Marathon/Include/CAN_DBC_MODULE
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -35,6 +35,6 @@ endif()
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/gvn/StandRemoteUI/server/build/Stand_Marathon/Include/CAN_DBC_MODULE/install_local_manifest.txt"
+  file(WRITE "C:/Users/n.tulupov/Desktop/StandRemoteUI/server/build/Stand_Marathon/Include/CAN_DBC_MODULE/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

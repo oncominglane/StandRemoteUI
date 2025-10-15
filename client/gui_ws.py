@@ -91,6 +91,71 @@ def create_gui():
     toolbar = ttk.Frame(root, style="Toolbar.TFrame")
     toolbar.pack(fill="x")
 
+
+    # --- КНОПКА ОТПРАВКИ ВСЕГО ---
+    def send_all():
+        # аккуратно читаем выбранную передачу (если уже добавляли рамку передач)
+        def _gear_code_or_none():
+            try:
+                return GEAR_MAP.get(gear_var.get(), 2)  # 2 = N
+            except Exception:
+                return None
+
+        gear_code = _gear_code_or_none()
+        mode = mode_var.get()
+
+        if mode == "currents":
+            # режим тока (момента): сначала общий контроль, потом Isd/Iq
+            try:
+                isd = float(Id_var.get() or 0.0)
+                isq = float(Iq_var.get() or 0.0)
+            except Exception:
+                ui_log("[UI] Некорректные Id/Iq — проверьте поля", "ERR")
+                return
+
+            ctrl = {
+                "cmd": "SendControl",
+                "En_Is": True,
+                "Kl_15": False,
+            }
+            if gear_code is not None:
+                ctrl["GearCtrl"] = int(gear_code)
+
+            client.send_json_threadsafe(ctrl)
+            client.send_json_threadsafe({
+                "cmd": "SendTorque",
+                "En_Is": True,
+                "Isd": isd,
+                "Isq": isq,
+            })
+            ui_log(f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
+                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else ""))
+
+        else:
+            # режим скорости (оборотов): один пакет SendControl
+            try:
+                ns = float(speed_var.get() or 0.0)
+            except Exception:
+                ui_log("[UI] Некорректное значение ns — проверьте поле/ползунок", "ERR")
+                return
+
+            ctrl = {
+                "cmd": "SendControl",
+                "En_Is": False,
+                "Kl_15": True,
+                "ns": ns,
+            }
+            if gear_code is not None:
+                ctrl["GearCtrl"] = int(gear_code)
+
+            client.send_json_threadsafe(ctrl)
+            ui_log(f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
+                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else ""))
+
+    # Кнопка в тулбаре
+    ttk.Button(toolbar, text="Отправить", style="Accent.TButton", command=send_all)\
+    .pack(side="left", padx=4, pady=PAD)
+
     def pill(parent, textvar, colorvar):
         wrap = tk.Frame(parent, bg=style.lookup("Toolbar.TFrame", "background"))
         dot = tk.Canvas(wrap, width=10, height=10, highlightthickness=0, bg=style.lookup("Toolbar.TFrame", "background"))
@@ -793,28 +858,11 @@ def create_gui():
 
     def set_mode(val: str):
         mode_var.set(val)
-        if val == "currents":
-            # переходим в режим токов — включаем удалёнку, выключаем Kl_15
-            client.send_json_threadsafe({"cmd": "SendControl", "En_Is": True, "Kl_15": False})
-            # сразу пробрасываем текущие Id/Iq (обязательно с En_Is=True)
-            client.send_json_threadsafe({
-                "cmd": "SendTorque",
-                "En_Is": True,
-                "Isd": float(Id_var.get() or 0.0),
-                "Isq": float(Iq_var.get() or 0.0)
-            })
-            ui_log("[UI] Режим: Токи (Id/Iq) — En_Is=1, Kl_15=0, отправлены текущие Id/Iq", "UI")
-        else:
-            # переходим в режим частоты — выключаем удалёнку, включаем Kl_15 и передаём ns
-            client.send_json_threadsafe({
-                "cmd": "SendControl",
-                "En_Is": False,
-                "Kl_15": True,
-                "ns": float(speed_var.get() or 0.0)
-            })
-            ui_log("[UI] Режим: Частота (ns) — En_Is=0, Kl_15=1, передан ns", "UI")
-
         update_mode_controls()
+        ui_log("[UI] Режим выбран: "
+            + ("Токи (Id/Iq) — будет отправлено En_Is=1, Kl_15=0" if val == "currents"
+                else "Частота (ns) — будет отправлено En_Is=0, Kl_15=1")
+            + " → нажмите «Отправить»")
 
     # сами «сегменты» — две радиокнопки
     rb1 = ttk.Radiobutton(mode_frame, text="Currents (Id/Iq)",
@@ -1002,24 +1050,13 @@ def create_gui():
             torque_entry.config(state="normal")
 
     def _on_speed_released(_=None):
+        # больше НИЧЕГО не отправляем автоматически
         if mode_var.get() == "speed":
-            client.send_json_threadsafe({
-                "cmd": "SendControl",
-                "En_Is": False,
-                "Kl_15": True,
-                "ns": float(speed_var.get() or 0.0),
-            })
-            ui_log(f"[UI] Обновлено ns={speed_var.get():.0f} (режим Частота)")
+            ui_log(f"[UI] ns изменён локально → нажмите «Отправить»")
 
     def _on_torque_released(_=None):
         if mode_var.get() == "currents":
-            client.send_json_threadsafe({
-                "cmd": "SendTorque",
-                "En_Is": True,
-                "Isd": float(Id_var.get() or 0.0),
-                "Isq": float(Iq_var.get() or 0.0),
-            })
-            ui_log("[UI] Обновлены Id/Iq (по отпусканию ползунка момента)")
+            ui_log("[UI] Id/Iq изменены локально → нажмите «Отправить»")
 
     speed_slider.bind("<ButtonRelease-1>", _on_speed_released)
     torque_slider.bind("<ButtonRelease-1>", _on_torque_released)

@@ -144,6 +144,50 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
             break;
         }
 
+        case 0x7d: { // MCU_Status (BO_ 125)
+            // SG_ MCU_OfsAl       : 7|12@0+  (0.0878906, 0)
+            data.MCU_OfsAl = static_cast<float>(UnpackSignalFromBytes(msg.data, 7, 12)) * 0.0878906f;
+
+            // SG_ MCU_Isd         : 11|12@0+ (0.5, -1023.5)
+            {
+                uint32_t raw = UnpackSignalFromBytes(msg.data, 11, 12);
+                data.MCU_Isd = static_cast<float>(raw) * 0.5f - 1023.5f;
+            }
+
+            // SG_ MCU_Isq         : 31|12@0+ (0.5, -1023.5)
+            {
+                uint32_t raw = UnpackSignalFromBytes(msg.data, 31, 12);
+                data.MCU_Isq = static_cast<float>(raw) * 0.5f - 1023.5f;
+            }
+
+            // SG_ MCU_bDmpCActv   : 35|1@0+  (1, 0)
+            data.MCU_bDmpCActv = static_cast<uint8_t>(UnpackSignalFromBytes(msg.data, 35, 1));
+
+            // SG_ MCU_stGateDrv   : 34|2@0+  (1, 0)
+            data.MCU_stGateDrv = static_cast<uint8_t>(UnpackSignalFromBytes(msg.data, 34, 2));
+
+            // SG_ MCU_DmpCTrqCurr : 55|8@0+  (0.2, -25)  "Nm"
+            {
+                uint32_t raw = UnpackSignalFromBytes(msg.data, 55, 8);
+                data.MCU_DmpCTrqCurr = static_cast<float>(raw) * 0.2f - 25.0f;
+            }
+
+            // SG_ MCU_VCUWorkMode : 59|4@0+  (1, 0)
+            data.MCU_VCUWorkMode = static_cast<uint8_t>(UnpackSignalFromBytes(msg.data, 59, 4));
+
+            std::cout << "[RX] MCU_Status: "
+                      << "OfsAl=" << data.MCU_OfsAl
+                      << " Isd=" << data.MCU_Isd
+                      << " Isq=" << data.MCU_Isq
+                      << " bDmpCActv=" << (int)data.MCU_bDmpCActv
+                      << " stGateDrv=" << (int)data.MCU_stGateDrv
+                      << " DmpCTrqCurr=" << data.MCU_DmpCTrqCurr
+                      << " WorkMode=" << (int)data.MCU_VCUWorkMode
+                      << std::endl;
+            break;
+        }
+
+
 
         default:
             std::cout << "[RX] Unknown ID: 0x" << std::hex << msg.id << std::dec << std::endl;

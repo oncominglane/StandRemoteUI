@@ -72,6 +72,8 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     // 9. Checksum (заглушка)
     PackSignalToBytes(payload, 0, 63, 8);
 
+    printPayloadHex(payload);
+
     can.send(0x046, payload, 8);
 
     if (std::getenv("WS_LOG_CAN")) {
@@ -117,7 +119,7 @@ void CommandSender::sendLimitCommand(CANInterface& can, const DataModel& data) {
 }
 
 
-void CommandSender::sendTorqueCommand(CANInterface& can, const DataModel& data) {
+void CommandSender::sendTorqueCommand(CANInterface& can, DataModel& data) {
     uint8_t payload[8] = {0};
 
     // 1. VCU_IdCommand: 13 бит, 0.1 масштаб, -320 смещение, старт с 7 бита
@@ -147,6 +149,14 @@ void CommandSender::sendTorqueCommand(CANInterface& can, const DataModel& data) 
         for (int i = 0; i < 8; ++i)
             std::printf("payload[%d] = 0x%02X\n", i, payload[i]);
     }
+
+    data.Brake_active = false;
+    data.Kl_15 = true;
+    data.TCS_active = false;
+    data.MCU_RequestedState = 1;
+    data.GearCtrl = 4;
+
+    sendControlCommand(can, data);
 }
 
 

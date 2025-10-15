@@ -97,6 +97,16 @@ std::string serializeData() {
     j["motorRs"] = model.motorRs;
     j["Wmechanical"] = model.Wmechanical;
 
+    // ➕ Новые поля из MCU_Status (0x4F7)
+    j["MCU_Status"] = {
+        {"MCU_OfsAl",       model.MCU_OfsAl},      // float, deg
+        {"MCU_Isd",         model.MCU_Isd},        // float, A
+        {"MCU_Isq",         model.MCU_Isq},        // float, A
+        {"MCU_bDmpCActv",   model.MCU_bDmpCActv ? 1 : 0},       // uint8 flag
+        {"MCU_DmpCTrqCurr", model.MCU_DmpCTrqCurr},// float, Nm
+        {"MCU_VCUWorkMode", (uint8_t)model.MCU_VCUWorkMode}     // uint8 [0..15]
+    };
+
     return j.dump();
 }
 

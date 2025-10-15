@@ -12,14 +12,14 @@ struct DataModel {
     uint32_t acode = 0x00000032;
 
     // === Управление ===
-    bool Kl_15 = false;            // Зажигание
+    bool Kl_15 = true;            // Зажигание
     bool En_rem = true;           // Удаленное управление
-    bool En_Is = false;            // Управление током
+    bool En_Is = true;            // Управление током
     uint8_t Dampf_U = 0;           // Демпф. U
     bool Brake_active = false;     // Тормоз
     bool TCS_active = false;       // TCS
-    uint8_t MotorCtrl = 0;         // Режим управления
-    uint8_t GearCtrl = 0;          // Коробка передач
+    uint8_t MotorCtrl = 1;         // Режим управления
+    uint8_t GearCtrl = 4;          // Коробка передач
     // === Добавить в секцию "Управление" ===
     float M_desired = 0.0f;           // Желаемый момент (Nm)
     uint8_t SurgeDamperState = 0;     // Состояние демпфера
@@ -27,9 +27,9 @@ struct DataModel {
 
 
     // === Ограничения ===
-    float M_max = 10.0f;           // [Нм]
-    float M_min = -10.0f;          // [Нм]
-    float M_grad_max = 4000.0f;    // [Нм/с]
+    float M_max = 1000.0f;           // [Нм]
+    float M_min = -1000.0;          // [Нм]
+    float M_grad_max = 3200.0f;    // [Нм/с]
     float dM_damp_Ctrl = 0.1f;     // Порог демпфирования
     float i_R = 9.78f;             // Передаточное число
     float n_max = 1000.0f;         // Макс. скорость [об/мин]
@@ -83,5 +83,13 @@ struct DataModel {
     int16_t Id = 0;
     int16_t Iq = 0;
 
+    // --- MCU_Status (BO_ 125) ---
+    float   MCU_OfsAl        = 0.0f;  // [deg] scale 0.0878906
+    float   MCU_Isd          = 0.0f;  // [A]   scale 0.5,  offset -1023.5
+    float   MCU_Isq          = 0.0f;  // [A]   scale 0.5,  offset -1023.5
+    uint8_t MCU_bDmpCActv    = 0;     // flag
+    // MCU_stGateDrv уже есть в секции статусов
+    float   MCU_DmpCTrqCurr  = 0.0f;  // [Nm]  scale 0.2,  offset -25
+    uint8_t MCU_VCUWorkMode  = 0;     // [0..15]
 
 };

@@ -70,6 +70,9 @@ class Controllers:
             "set_gear": self.set_gear_from_ui,
             "send_limits": self.send_limits_now,
             "send_torque": self.send_torque_now,
+            # синонимы на всякий случай
+            "send_limits_now": self.send_limits_now,
+            "send_torque_now": self.send_torque_now,
             # опционально — пригодится во view:
             "on_speed_released": self.on_speed_released,
             "on_torque_released": self.on_torque_released,
@@ -94,6 +97,7 @@ class Controllers:
         Поведение совпадает с исходным:
         - режим 'currents': SendControl(En_Is=1, Kl_15=0 [+GearCtrl?]) затем SendTorque(Isd/Iq)
         - режим 'speed'   : SendControl(En_Is=0, Kl_15=1, ns [+GearCtrl?])
+        - режим 'torque'  : SendControl(En_Is=0, Kl_15=1, Ms [+GearCtrl?])
         """
         if not self.client:
             self.ui_log("[WS] клиент не привязан", "ERR")
@@ -127,6 +131,29 @@ class Controllers:
             })
             self.ui_log(f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
                         + (f", Gear={gear_code}" if gear_code is not None else ""))
+
+
+        elif mode == "torque":
+            try:
+                Ms = self._get_float(self.state.torque_var, "Ms")
+            except Exception:
+                return
+
+            ctrl = {
+                "cmd": "SendControl",
+                "En_Is": False,                      # ???
+                "Kl_15": True,                     # ???
+                "Ms": Ms,
+            }
+            if gear_code is not None:
+                ctrl["GearCtrl"] = int(gear_code)
+
+            self.client.send_json_threadsafe(ctrl)
+            self.ui_log(
+                f"[UI] ▶ Отправлено: режим Момент (Ms={Ms:.1f})"
+                + (f", Gear={gear_code}" if gear_code is not None else "")
+            )
+
 
         else:
             # режим частоты: только SendControl с ns
@@ -168,6 +195,21 @@ class Controllers:
                 "ns": ns
             })
             self.ui_log(f"[UI] SendControl: Частота (ns={ns:.0f})", "UI")
+
+        elif self.state.mode_var.get() == "torque":
+            try:
+                Ms = self._get_float(self.state.torque_var, "Ms")
+            except Exception:
+                return
+            self.client.send_json_threadsafe({
+                "cmd": "SendControl",
+                "En_Is": False,  # ???
+                "Kl_15": True,
+                "Ms": Ms
+            })
+            self.ui_log(f"[UI] SendControl: Момент (Ms={Ms:.1f})", "UI")
+
+
         else:
             self.client.send_json_threadsafe({
                 "cmd": "SendControl",
@@ -225,6 +267,8 @@ class Controllers:
             "[UI] Режим выбран: "
             + ("Токи (Id/Iq) — будет отправлено En_Is=1, Kl_15=0"
                if val == "currents" else
+               "Момент (Ms) — будет отправлено En_Is=0, Kl_15=1"
+               if val == "torque" else
                "Частота (ns) — будет отправлено En_Is=0, Kl_15=1")
             + " → нажмите «Отправить»"
         )
@@ -246,18 +290,36 @@ class Controllers:
 
     def update_mode_controls(self) -> None:
         """
-        Включает/выключает ползунки/поля ввода в зависимости от режима.
-        Ожидаются ключи в views.widgets: speed_slider, speed_entry, torque_slider, torque_entry.
-        Безопасна при отсутствии виджетов (ничего не делает).
+        Настройка UI под выбранный режим.
+        1) Если view предоставляет колбэк configure_main_slider(mode) — делегируем ему.
+        2) Иначе: если мэппинг speed_* и torque_* указывает на ОДИН и тот же виджет,
+           ничего не выключаем (единый ползунок). Если разные — старая логика.
         """
+        # 1) делегируем, если есть
+        configure = getattr(self.views, "configure_main_slider", None) if self.views else None
+        if callable(configure):
+            try:
+                configure(self.state.mode_var.get())
+            finally:
+                return
+
+        # 2) совместимость со старой раскладкой
         if not self.views or not getattr(self.views, "widgets", None):
             return
         w = self.views.widgets
-        mode = self.state.mode_var.get()
 
         ss = w.get("speed_slider"); se = w.get("speed_entry")
         ts = w.get("torque_slider"); te = w.get("torque_entry")
 
+        same_slider = (ss is not None and ss is ts)
+        same_entry  = (se is not None and se is te)
+
+        # Единый ползунок/поле — ничего не дизейблим
+        if same_slider or same_entry:
+            return
+
+        # Старая двухползунковая логика
+        mode = self.state.mode_var.get()
         if mode == "speed":
             for obj in (ss,):
                 try: obj.state(["!disabled"])

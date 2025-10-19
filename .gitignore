@@ -1,3 +1,6 @@
 # build artifacts
 /client/__pycache__/
 /server/__pycache__/
+/server/build/
+/client/build/
+/client/dist/

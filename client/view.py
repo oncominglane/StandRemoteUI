@@ -78,6 +78,34 @@ class ViewRefs:
 # --- вспомогательные для «активного ползунка» (стрелки ↑/↓) ---
 _active_scale: tuple[ttk.Scale, tk.Variable, float] | None = None
 
+
+# Spinbox с удобными стрелками и шорткатами
+def _make_num_spin(parent, var, from_=-1000.0, to=1000.0, step=0.1, width=10):
+    try:
+        # ttk.Spinbox есть не во всех билдах Tk — пробуем сначала его
+        sp = ttk.Spinbox(parent, textvariable=var, from_=from_, to=to, increment=step,
+                        width=width, justify="right")
+    except Exception:
+        sp = tk.Spinbox(parent, textvariable=var, from_=from_, to=to, increment=step,
+                            width=width, justify="right")
+
+    # Шорткаты: Shift+↑/↓ = крупный шаг (в 10 раз больше)
+    def _nudge(delta):
+        try:
+            val = float(var.get() or 0.0)
+        except Exception:
+            val = 0.0
+        newv = max(from_, min(to, val + delta))
+        var.set(f"{newv:.3f}")
+
+    sp.bind("<Shift-Up>",   lambda e: (_nudge(step*10), "break")[1])
+    sp.bind("<Shift-Down>", lambda e: (_nudge(-step*10), "break")[1])
+
+    # Enter = нормализовать формат (3 знака после запятой)
+    sp.bind("<Return>", lambda e: (_nudge(0.0), "break")[1])
+    return sp
+
+
 def _make_focusable_scale(scale: ttk.Scale, var: tk.Variable, step: float = 1.0):
     def on_click(_):
         global _active_scale
@@ -223,10 +251,12 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     currents_frame = ttk.LabelFrame(main_inner, text="Currents")
     currents_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
     ttk.Label(currents_frame, text="Id [A]").grid(row=0, column=0, sticky="e", padx=6, pady=6)
-    ttk.Entry(currents_frame, width=10, textvariable=state.Id_var).grid(row=0, column=1, sticky="w")
+    _make_num_spin(currents_frame, state.Id_var, from_=-1000.0, to=1000.0, step=0.1, width=10)\
+        .grid(row=0, column=1, sticky="w")
     ttk.Label(currents_frame, text="Iq [A]").grid(row=0, column=2, sticky="e", padx=6, pady=6)
-    ttk.Entry(currents_frame, width=10, textvariable=state.Iq_var).grid(row=0, column=3, sticky="w")
-
+    _make_num_spin(currents_frame, state.Iq_var, from_=-1000.0, to=1000.0, step=0.1, width=10)\
+        .grid(row=0, column=3, sticky="w")
+    
     # Limits
     limits_frame = ttk.LabelFrame(main_inner, text="Limits")
     limits_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
@@ -234,6 +264,8 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     _labent(limits_frame, 0, 2, "M_max [Н·м]", state.M_max_var)
     _labent(limits_frame, 1, 0, "M_grad_max",  state.M_grad_max_var)
     _labent(limits_frame, 1, 2, "n_max [rpm]", state.n_max_var)
+
+
 
     # Параметры стенда (поля-отображение)
     params_frame = ttk.LabelFrame(main_inner, text="MCU_VCU_parameters")

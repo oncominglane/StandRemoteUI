@@ -1,3 +1,4 @@
+# network.py
 import asyncio
 import json
 import threading
@@ -24,6 +25,11 @@ class WSClient:
     def start(self):
         if self.thread and self.thread.is_alive():
             return # если поток уже создан и работает — выходим, повторный запуск не нужен
+        if self.thread and self.thread.is_alive():
+            return
+        if websockets is None:
+            self.on_error("Не найден модуль 'websockets'. Установите: pip install websockets")
+            return
         self._running.set()
         self.thread = threading.Thread(target=self._run_loop, daemon=True) # Создаём отдельный поток, который будет запускать метод _run_loop().
         self.thread.start() # 
@@ -36,6 +42,14 @@ class WSClient:
                     task.cancel() # отменяем все активные задачи в loop
                 self.loop.stop() # останавливаем цикл loop
             self.loop.call_soon_threadsafe(_stop) # просим loop в другом потоке безопасно выполнить _stop().
+        # дождаться завершения фонового потока (не обязательно, но аккуратнее)
+        if self.thread:
+            try:    
+                self.thread.join(timeout=3.0)
+            except Exception:
+                pass
+            finally:
+                self.thread = None
 
     def _run_loop(self):
         self.loop = asyncio.new_event_loop() # Создаём новый asyncio-цикл событий 
@@ -75,6 +89,7 @@ class WSClient:
                 # экспоненциальный бэкофф
                 await asyncio.sleep(backoff) # Ждём backoff секунд перед повторным подключением.
                 backoff = min(backoff * 2, 10.0)
+        self.on_status("WS остановлен")
 
     def send_cmd_threadsafe(self, cmd: str): # Отправляет команду на сервер из любого потока (главного Tkinter или ещё откуда-то).
         """Без await. Можно вызывать из любого потока (в т.ч. из Tk)."""

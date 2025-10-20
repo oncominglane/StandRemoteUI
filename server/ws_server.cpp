@@ -38,7 +38,6 @@ inline void set_if_present(const json& j, const char* key, T& target) {
 }
 
 // применить параметры управления (для "SendControl")
-// применить параметры управления (для "SendControl")
 static void apply_control_fields(const json& j) {
     set_if_present(j, "MotorCtrl",    model.MotorCtrl);
     set_if_present(j, "GearCtrl",     model.GearCtrl);
@@ -162,6 +161,10 @@ void handleCommand(const json& j) {
 }
 
 
+using clock1 = std::chrono::steady_clock;
+clock1::time_point t01 = clock1::now();
+static constexpr std::chrono::milliseconds PERIOD_CTRL1  {500};   // 0x046
+
 // Модифицируем функцию do_session для отправки CAN-сообщений
 void do_session(tcp::socket socket) {
     try {
@@ -175,15 +178,19 @@ void do_session(tcp::socket socket) {
             while (running) {
                 try {
                     sm.update();
-                    std::string data = serializeData();
-                    ws->write(boost::asio::buffer(data));
+                    const auto now1 = clock1::now();
+                    if(now1 - t01 > PERIOD_CTRL1){
+                        std::string data = serializeData();
+                        ws->write(boost::asio::buffer(data));
+                        t01 = now1;
+                    }
 
-                    std::vector<uint8_t> can_data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+                    /*std::vector<uint8_t> can_data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
                     sendCANFrame(*ws, "rx", 0x123, can_data, can_data.size(), 0,
                         std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0);
+                            std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0);*/
 
-                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 } catch (const std::exception& e) {
                     std::cerr << "[Updater error] " << e.what() << std::endl;
                     break;
@@ -224,7 +231,6 @@ int main() {
         std::cout << "WebSocket server running at ws://0.0.0.0:9000" << std::endl;
 
         for (;;) {
-            std::cout << "ABOBA" << std::endl;
             tcp::socket socket{ioc};
             acceptor.accept(socket);
             std::thread(&do_session, std::move(socket)).detach();

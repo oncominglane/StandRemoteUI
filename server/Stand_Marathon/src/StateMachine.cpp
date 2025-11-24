@@ -26,8 +26,8 @@ void StateMachine::periodicTx() {
     data.Kl_15 = true;
     data.TCS_active = false;
 
-    data.MCU_RequestedState = 1;
-    data.GearCtrl = 4;
+    // data.MCU_RequestedState = 1;
+    // data.GearCtrl = 4;
 
     // Не слать ничего в Stop/Idle
     if (currentState == State::Stop || currentState == State::Idle) return;
@@ -82,14 +82,16 @@ void StateMachine::handleIdle() {
 
 void StateMachine::handleInit() {
     std::cout << "[STATE] Init\n";
+    std::cout << "CAN Initialized\n";
+    setState(State::Read2);
     // инициализируем канал параметрами из DataModel (после загрузки INI)
-    if (canInterface.init(data.canChannel, data.canBaud, data.canFlags)) { // корректнее, чем хардкод:contentReference[oaicite:1]{index=1}
+    /*if (canInterface.init(data.canChannel, data.canBaud, data.canFlags)) { // корректнее, чем хардкод:contentReference[oaicite:1]{index=1}
         std::cout << "CAN Initialized\n";
         setState(State::Read2);
     } else {
         std::cerr << "CAN Init failed!\n";
         setState(State::Stop);
-    }
+    }*/
 }
 
 CANMessage StateMachine::handleRead2() {

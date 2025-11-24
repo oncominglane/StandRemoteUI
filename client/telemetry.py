@@ -161,7 +161,10 @@ class Telemetry:
         Ms  = self._as_float(d.get("Ms"))
         ns  = self._as_float(d.get("ns"))
 
-        Emf = self._as_float(self._get_alias(d, "motorEmfCalc"))
+        igbt = self._as_float(d.get("MCU_IGBTTempU"))
+        stator = self._as_float(d.get("MCU_TempCurrStr"))
+
+        Emf = self._as_float(self._get_alias(d, "Emf"))
         We  = self._as_float(self._get_alias(d, "Welectrical"))
         Wm  = self._as_float(self._get_alias(d, "Wmechanical"))
         Rs  = self._as_float(self._get_alias(d, "Rs"), DEFAULT_RS_OHMS)
@@ -198,6 +201,8 @@ class Telemetry:
             put("direct current (Idc)", Idc); put("Stator current d (Isd)", Isd)
             put("Torque (Ms)", Ms); put("Speed rotation", ns)
             put("Emf", Emf); put("Welectrical", We); put("Wmechanical", Wm); put("motorRs", Rs)
+            put("IGBT temperature", igbt)
+            put("Stator temperature", stator)
 
         # --- логбук (в таблицу) ---
         self._append_log_row({

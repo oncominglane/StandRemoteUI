@@ -137,6 +137,10 @@ void sendCANFrame(websocket::stream<tcp::socket>& ws, const std::string& directi
 void handleCommand(const json& j) {
     std::string cmd = j.value("cmd", "");
 
+
+    apply_torque_fields(j);
+    apply_limit_fields(j);
+    apply_control_fields(j);
     if (cmd == "Init") {
         sm.setState(State::Init);
     } else if (cmd == "Stop") {
@@ -239,9 +243,3 @@ int main() {
         std::cerr << "[Fatal] " << e.what() << std::endl;
     }
 }
-
-
-
-
-
-

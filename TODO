@@ -31,3 +31,9 @@
 рефакторинг кода, комментарии и док к функциям 
 
 Добавить выключение при отключении клиента
+
+VCU_MCURequestedState = 4
+
+VCU_MCUSurgeDamperState = 2
+
+VCU_TrqThresholdDampgCtl = 0.1

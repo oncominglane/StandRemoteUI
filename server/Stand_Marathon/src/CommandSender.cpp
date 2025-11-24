@@ -57,7 +57,7 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     PackSignalToBytes(payload, data.Brake_active ? 1 : 0, 11, 1);
 
     // 5. RequestedState (4 бита, старт с 47)
-    PackSignalToBytes(payload, data.MCU_RequestedState & 0x0F, 47, 4);
+    PackSignalToBytes(payload, data.MotorCtrl & 0x0F, 47, 4);
 
     // 6. TCSActive (1 бит, старт с 23)
     PackSignalToBytes(payload, data.TCS_active ? 1 : 0, 23, 1);
@@ -87,7 +87,7 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
        torque_raw,
        (unsigned)(data.SurgeDamperState & 0x03),
        data.Brake_active ? 1 : 0,
-       (unsigned)(data.MCU_RequestedState & 0x0F),
+       (unsigned)(data.MotorCtrl & 0x0F),
        data.TCS_active ? 1 : 0,
        (unsigned)(data.GearCtrl & 0x07),
        (unsigned)((uint8_t)((counter - 1) & 0x0F)),  // значение, которое реально упаковали

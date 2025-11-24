@@ -18,8 +18,8 @@ struct DataModel {
     uint8_t Dampf_U = 0;           // Демпф. U
     bool Brake_active = false;     // Тормоз
     bool TCS_active = false;       // TCS
-    const uint8_t MotorCtrl = 1;         // Режим управления
-    const uint8_t GearCtrl = 4;          // Коробка передач
+    uint8_t MotorCtrl = 1;         // Режим управления
+    uint8_t GearCtrl = 4;          // Коробка передач
     // === Добавить в секцию "Управление" ===
     float M_desired = 0.0f;           // Желаемый момент (Nm)
     uint8_t SurgeDamperState = 2;     // Состояние демпфера

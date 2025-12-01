@@ -57,7 +57,7 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     PackSignalToBytes(payload, data.Brake_active ? 1 : 0, 11, 1);
 
     // 5. RequestedState (4 бита, старт с 47)
-    PackSignalToBytes(payload, data.MCU_RequestedState & 0x0F, 47, 4);
+    PackSignalToBytes(payload, data.MotorCtrl & 0x0F, 47, 4);
 
     // 6. TCSActive (1 бит, старт с 23)
     PackSignalToBytes(payload, data.TCS_active ? 1 : 0, 23, 1);
@@ -72,12 +72,27 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     // 9. Checksum (заглушка)
     PackSignalToBytes(payload, 0, 63, 8);
 
-    printPayloadHex(payload);
-
     can.send(0x046, payload, 8);
 
     if (std::getenv("WS_LOG_CAN")) {
         std::printf("[LOG] ControlCommand:\n");
+        std::printf("[CAN TX] ID=0x046 DLC=8 "
+       "DATA=%02X %02X %02X %02X %02X %02X %02X %02X | "
+       "KL15=%d Ms=%.1f torque_raw=%d Surge=%u Brake=%u "
+       "ReqState=%u TCS=%u Gear=%u Cnt=%u Crc=%u\n",
+       (unsigned)payload[0], (unsigned)payload[1], (unsigned)payload[2], (unsigned)payload[3],
+       (unsigned)payload[4], (unsigned)payload[5], (unsigned)payload[6], (unsigned)payload[7],
+       data.Kl_15 ? 1 : 0,
+       data.Ms,
+       torque_raw,
+       (unsigned)(data.SurgeDamperState & 0x03),
+       data.Brake_active ? 1 : 0,
+       (unsigned)(data.MotorCtrl & 0x0F),
+       data.TCS_active ? 1 : 0,
+       (unsigned)(data.GearCtrl & 0x07),
+       (unsigned)((uint8_t)((counter - 1) & 0x0F)),  // значение, которое реально упаковали
+       0u                                           // checksum сейчас заглушка = 0
+);
         for (int i = 0; i < 8; ++i)
             std::printf("payload[%d] = 0x%02X\n", i, payload[i]);
     }
@@ -113,6 +128,7 @@ void CommandSender::sendLimitCommand(CANInterface& can, const DataModel& data) {
 
     if (std::getenv("WS_LOG_CAN")) {
         std::printf("[LOG] LimitCommand:\n");
+        std::cout << data.M_min << "     " << data.M_max << std::endl;
         for (int i = 0; i < 8; ++i)
             std::printf("payload[%d] = 0x%02X\n", i, payload[i]);
     }
@@ -149,14 +165,6 @@ void CommandSender::sendTorqueCommand(CANInterface& can, DataModel& data) {
         for (int i = 0; i < 8; ++i)
             std::printf("payload[%d] = 0x%02X\n", i, payload[i]);
     }
-
-    data.Brake_active = false;
-    data.Kl_15 = true;
-    data.TCS_active = false;
-    data.MCU_RequestedState = 1;
-    data.GearCtrl = 4;
-
-    sendControlCommand(can, data);
 }
 
 

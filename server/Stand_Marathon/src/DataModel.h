@@ -22,14 +22,14 @@ struct DataModel {
     uint8_t GearCtrl = 4;          // Коробка передач
     // === Добавить в секцию "Управление" ===
     float M_desired = 0.0f;           // Желаемый момент (Nm)
-    uint8_t SurgeDamperState = 0;     // Состояние демпфера
+    uint8_t SurgeDamperState = 2;     // Состояние демпфера
     uint8_t MCU_RequestedState = 0;   // MCU requested state
 
 
     // === Ограничения ===
-    float M_max = 1000.0f;           // [Нм]
-    float M_min = -1000.0;          // [Нм]
-    float M_grad_max = 3200.0f;    // [Нм/с]
+    float M_max = 450.0f;           // [Нм]
+    float M_min = -450.0;          // [Нм]
+    float M_grad_max = 4200.0f;    // [Нм/с]
     float dM_damp_Ctrl = 0.1f;     // Порог демпфирования
     float i_R = 9.78f;             // Передаточное число
     float n_max = 1000.0f;         // Макс. скорость [об/мин]

@@ -47,7 +47,7 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     PackSignalToBytes(payload, data.Kl_15 ? 1 : 0, 8, 1);
 
     // 2. MCUDesiredTorque (11 бит, -1023 смещение, 1.0 масштаб), старт с 7
-    int32_t torque_raw = static_cast<int32_t>((data.Ms + 1023.0f));
+    int32_t torque_raw = static_cast<int32_t>((data.M_desired + 1023.0f));
     PackSignalToBytes(payload, torque_raw, 7, 11);
 
     // 3. SurgeDamperState (2 бита, старт с 10)

@@ -86,7 +86,7 @@ static void apply_control_fields(const json& j) {
     // Если его нет — временно кладём в model.ns (но это смешивает измерение и задание):
     set_if_present(j, "ns",           model.ns);
 
-    set_if_present(j, "Ms",           model.Ms);
+    set_if_present(j, "Ms",           model.M_desired);
 }
 
 

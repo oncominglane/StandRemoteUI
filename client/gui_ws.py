@@ -16,7 +16,7 @@ PAD = 8
 
 # === Ld/Lq online compute config ===
 DEFAULT_RS_OHMS = 0.05  # поставьте ваш Rs по умолчанию, если не приходит из телеметрии
-DEFAULT_POLE_PAIRS = None  # можно задать число пар полюсов, если не приходит (например, 4)
+DEFAULT_POLE_PAIRS = 4  # можно задать число пар полюсов, если не приходит (например, 4)
 
 # Поля, из которых пробуем взять значения (alias-ы на случай разных имён в JSON)
 FIELD_ALIASES = {
@@ -37,6 +37,12 @@ REV_GEAR_MAP = {v: k for k, v in GEAR_MAP.items()}
 
 map_rpm = []
 
+# ——— Маппинг режима управления двигателем (MotorCtrl) ———
+# 1 — токовый режим (Id/Iq), 2 — режим по скорости/частоте (ns)
+MOTOR_MODE_MAP = {
+    "currents": 1,
+    "speed": 2,
+}
 
 def init_style(dark=False):
     style = ttk.Style()
@@ -69,7 +75,8 @@ def init_style(dark=False):
 
 
 from network import WSClient
-WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
+#WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
+WS_URL = "ws://192.168.1.161:9000"
 
 def make_focusable_scale(scale, var, step=1.0):
     def on_click(event):
@@ -111,12 +118,20 @@ def create_gui():
 
     # --- КНОПКА ОТПРАВКИ ВСЕГО ---
     def send_all():
+
+        send_limits_now()
+        send_control_now()
+        send_torque_now()
+
         # аккуратно читаем выбранную передачу (если уже добавляли рамку передач)
         def _gear_code_or_none():
             try:
                 return GEAR_MAP.get(gear_var.get(), 2)  # 2 = N
             except Exception:
                 return None
+            
+        mode = mode_var.get()
+        motor_code = MOTOR_MODE_MAP.get(mode, 1)
 
         gear_code = _gear_code_or_none()
         mode = mode_var.get()
@@ -137,6 +152,10 @@ def create_gui():
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
+
+            if motor_code is not None:
+                ctrl["MotorCtrl"] = int(motor_code)
+                ctrl["ReqState"] = int(motor_code)
 
             client.send_json_threadsafe(ctrl)
             client.send_json_threadsafe({
@@ -164,6 +183,9 @@ def create_gui():
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
+            if motor_code is not None:
+                ctrl["MotorCtrl"] = int(motor_code)
+                ctrl["ReqState"] = int(motor_code)
 
             client.send_json_threadsafe(ctrl)
             ui_log(f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
@@ -279,28 +301,45 @@ def create_gui():
 
 
     # ==== КНОПОЧНЫЕ ХЭНДЛЕРЫ ====
-
     def send_control_now():
         """Применить режим и ключевые флаги (и, если режим 'Частота', то ns)."""
-        if mode_var.get() == "speed":
+
+        mode = mode_var.get()
+        motor_code = MOTOR_MODE_MAP.get(mode, 1)
+
+        if mode == "speed":
             try:
                 ns = float(speed_var.get() or 0.0)
             except Exception:
-                ui_log("[UI] ns: некорректное значение", "ERR"); return
-            client.send_json_threadsafe({
+                ui_log("[UI] ns: некорректное значение", "ERR")
+                return
+
+            payload = {
                 "cmd": "SendControl",
                 "En_Is": False,
                 "Kl_15": True,
-                "ns": ns
-            })
-            ui_log(f"[UI] SendControl: Частота (ns={ns:.0f})", "UI")
-        else:
-            client.send_json_threadsafe({
+                "ns": ns,
+                "MotorCtrl": motor_code,
+            }
+            client.send_json_threadsafe(payload)
+            ui_log(
+                f"[UI] SendControl: Частота (ns={ns:.0f}, MotorCtrl={motor_code})",
+                "UI",
+            )
+
+        else:  # "currents"
+            payload = {
                 "cmd": "SendControl",
                 "En_Is": True,
-                "Kl_15": False
-            })
-            ui_log("[UI] SendControl: Токи (En_Is=1, Kl_15=0)", "UI")
+                "Kl_15": False,
+                "MotorCtrl": motor_code,
+            }
+            client.send_json_threadsafe(payload)
+            ui_log(
+                f"[UI] SendControl: Токи (En_Is=1, Kl_15=0, MotorCtrl={motor_code})",
+                "UI",
+            )
+
 
 
     def send_limits_now():
@@ -320,6 +359,8 @@ def create_gui():
                 "M_grad_max": _pf(M_grad_max_var, "M_grad_max", as_int=True),
                 "n_max": _pf(n_max_var, "n_max", as_int=True),
             }
+            print(f"DEBUG: M_min= {payload['M_min']}, M_max= {payload['M_max']}")
+
         except Exception:
             return
 
@@ -1034,9 +1075,9 @@ def create_gui():
     slider_frame.grid_columnconfigure(1, weight=1, minsize=80)
     
     ttk.Label(slider_frame, text="Speed\nrpm").grid(row=0, column=0, pady=(0,4))
-    ttk.Label(slider_frame,  text="Torque\nN*m").grid(    row=0, column=1, pady=(0,4))
+    ttk.Label(slider_frame,  text="Torque\nN*m").grid(row=0, column=1, pady=(0,4))
 
-    speed_slider = ttk.Scale(slider_frame, from_=20000, to=0, variable=speed_var, orient="vertical", length=300)
+    speed_slider = ttk.Scale(slider_frame, from_=10000, to=0, variable=speed_var, orient="vertical", length=300)
     speed_slider.grid(row=1, column=0, sticky="ns", padx=6, pady=6)
     speed_slider.state(["disabled"])
     speed_slider.bind("<Button-1>", lambda e: speed_slider.focus_set())

@@ -188,7 +188,7 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     toolbar = ttk.Frame(root, style="Toolbar.TFrame")
     toolbar.pack(fill="x")
 
-    ttk.Button(toolbar, text="Отправить", style="Accent.TButton",
+    ttk.Button(toolbar, text="Send", style="Accent.TButton",
                command=handlers.get("send_all", lambda: None)).pack(side="left", padx=4, pady=PAD)
     ttk.Button(toolbar, text="▶ Start", width=14,
                command=lambda: handlers.get("send_cmd", lambda *_: None)("Init")).pack(side="left", padx=(PAD, 4), pady=PAD)

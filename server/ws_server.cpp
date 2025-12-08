@@ -20,6 +20,10 @@
 #include "ConfigManager.h"
 #include "CANInterface.h"
 
+#include <fstream>
+#include <mutex>
+#include <cstdlib>
+
 using tcp = boost::asio::ip::tcp;
 namespace websocket = boost::beast::websocket;
 using json = nlohmann::json;
@@ -35,6 +39,36 @@ inline void set_if_present(const json& j, const char* key, T& target) {
     if (j.contains(key) && !j.at(key).is_null()) {
         target = j.at(key).get<T>();
     }
+}
+
+static bool         g_log_can   = false;
+static std::mutex   g_log_mutex;
+static std::ofstream g_log_file;
+
+static void init_can_log()
+{
+    const char* env = std::getenv("WS_LOG_CAN");
+    if (!env) return;
+
+    std::string v(env);
+    if (v == "1" || v == "true" || v == "TRUE") {
+        g_log_can = true;
+        g_log_file.open("ws_can_log.jsonl", std::ios::app);
+        if (!g_log_file) {
+            std::cerr << "[WS_LOG_JSON] cannot open ws_can_log.jsonl" << std::endl;
+            g_log_can = false;
+        } else {
+            std::cerr << "[WS_LOG_JSON] logging CAN frames to ws_can_log.jsonl" << std::endl;
+        }
+    }
+}
+
+static void log_can_json(const json& j)
+{
+    if (!g_log_can) return;
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    if (!g_log_file.is_open()) return;
+    g_log_file << j.dump() << std::endl;
 }
 
 // применить параметры управления (для "SendControl")
@@ -211,7 +245,11 @@ void do_session(tcp::socket socket) {
                 std::string msg = boost::beast::buffers_to_string(buffer.data());
                 auto j = json::parse(msg);
 
+                const json jei = j;
+
                 handleCommand(j);
+
+                log_can_json(jei);
             }
         } catch (const std::exception& e) {
             std::cerr << "[Reader error] " << e.what() << std::endl;
@@ -230,6 +268,8 @@ int main() {
     // Загрузка конфигурации и перевод в исходное состояние
     config.load(model);
     sm.setState(State::Idle);
+
+    init_can_log();
 
     try {
         boost::asio::io_context ioc;

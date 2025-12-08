@@ -232,6 +232,7 @@ class Controllers:
                 "M_grad_max": self._get_int(self.state.M_grad_max_var, "M_grad_max"),
                 "n_max": self._get_int(self.state.n_max_var, "n_max"),
             }
+            print(f"M_min = {payload['M_min']}, M_max = {payload['M_max']}")
         except Exception:
             return
 

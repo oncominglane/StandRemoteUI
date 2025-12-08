@@ -9,7 +9,11 @@ from controllers import Controllers
 from telemetry import Telemetry
 
 # Тот же адрес, что и в исходном gui_ws.py
+<<<<<<< HEAD
 WS_URL = "ws://192.168.1.161:9000"
+=======
+WS_URL = "ws://192.168.4.35:9000"
+>>>>>>> 7ea568c3bd28e0ff2e2470270467623bb453f2a6
 
 
 def main():

@@ -75,8 +75,8 @@ def init_style(dark=False):
 
 
 from network import WSClient
-#WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
-WS_URL = "ws://192.168.1.161:9000"
+WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
+#WS_URL = "ws://192.168.1.161:9000"
 
 def make_focusable_scale(scale, var, step=1.0):
     def on_click(event):
@@ -136,6 +136,12 @@ def create_gui():
         gear_code = _gear_code_or_none()
         mode = mode_var.get()
 
+        try:
+            M_desired = float(torque_var.get() or 0.0)
+        except Exception:
+            ui_log("[UI] Некорректное значение Torque (M_desired)", "ERR")
+            M_desired = 0.0
+
         if mode == "currents":
             # режим тока (момента): сначала общий контроль, потом Isd/Iq
             try:
@@ -180,6 +186,7 @@ def create_gui():
                 "En_Is": False,
                 "Kl_15": True,
                 "ns": ns,
+                "M_desired": M_desired,  # <-- добавлено
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)

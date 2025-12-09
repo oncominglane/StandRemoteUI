@@ -75,8 +75,8 @@ def init_style(dark=False):
 
 
 from network import WSClient
-WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
-#WS_URL = "ws://192.168.1.161:9000"
+#WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
+WS_URL = "ws://192.168.0.19:9000"
 
 def make_focusable_scale(scale, var, step=1.0):
     def on_click(event):

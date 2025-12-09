@@ -83,7 +83,7 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
        (unsigned)payload[0], (unsigned)payload[1], (unsigned)payload[2], (unsigned)payload[3],
        (unsigned)payload[4], (unsigned)payload[5], (unsigned)payload[6], (unsigned)payload[7],
        data.Kl_15 ? 1 : 0,
-       data.Ms,
+       data.M_desired,
        torque_raw,
        (unsigned)(data.SurgeDamperState & 0x03),
        data.Brake_active ? 1 : 0,

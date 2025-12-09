@@ -452,11 +452,21 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
 
     # Выдаём ссылки на графики/оси в state — чтобы контроллер мог обновлять
     state.trends = {
-        "figure": fig_trends, "canvas": canvas_trends,
-        "ax1": ax1, "l_ns": l_ns,
-        "ax2": ax2, "l_ms": l_ms,
-        "ax3": ax3, "l_idc": l_idc, "l_isd": l_isd,
-        "ax4": ax4, "l_id": l_id, "l_iq": l_iq, "l_ud": l_ud, "l_uq": l_uq,
+        "figure": fig_trends,
+        "canvas": canvas_trends,
+
+        # список осей
+        "axes": [ax1, ax2, ax3, ax4],
+
+        # список линий в ожидаемом порядке:
+        # 0: ns, 1: Ms, 2: Idc, 3: Isd, 4: Id, 5: Iq, 6: Ud, 7: Uq
+        "lines": [l_ns, l_ms, l_idc, l_isd, l_id, l_iq, l_ud, l_uq],
+
+        # именные ссылки — просто для удобства (можешь оставить или убрать)
+        "ax1": ax1, "ax2": ax2, "ax3": ax3, "ax4": ax4,
+        "l_ns": l_ns, "l_ms": l_ms,
+        "l_idc": l_idc, "l_isd": l_isd,
+        "l_id": l_id, "l_iq": l_iq, "l_ud": l_ud, "l_uq": l_uq,
     }
     state.maps = {
         "figure": fig_maps, "canvas": canvas_maps,

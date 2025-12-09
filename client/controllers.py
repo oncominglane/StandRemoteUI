@@ -1,11 +1,10 @@
-# controllers.py
 from __future__ import annotations
 
 import csv
 from datetime import datetime
 from typing import Optional, Callable
 
-from state import GEAR_MAP, TELEM_COLUMNS, AppState
+from state import GEAR_MAP, TELEM_COLUMNS, AppState, MOTOR_MODE_MAP
 
 
 class Controllers:
@@ -70,9 +69,14 @@ class Controllers:
             "set_gear": self.set_gear_from_ui,
             "send_limits": self.send_limits_now,
             "send_torque": self.send_torque_now,
+            "send_control_now": self.send_control_now,
+            "apply_mode": self.apply_mode,           # аналог старого set_mode_from_ui
+            "set_mode_from_ui": self.apply_mode,     # синоним для совместимости
+
             # синонимы на всякий случай
             "send_limits_now": self.send_limits_now,
             "send_torque_now": self.send_torque_now,
+
             # опционально — пригодится во view:
             "on_speed_released": self.on_speed_released,
             "on_torque_released": self.on_torque_released,
@@ -95,19 +99,25 @@ class Controllers:
     def send_all(self) -> None:
         """
         Поведение совпадает с исходным:
-        - режим 'currents': SendControl(En_Is=1, Kl_15=0 [+GearCtrl?]) затем SendTorque(Isd/Iq)
-        - режим 'speed'   : SendControl(En_Is=0, Kl_15=1, ns [+GearCtrl?])
-        - режим 'torque'  : SendControl(En_Is=0, Kl_15=1, Ms [+GearCtrl?])
+        - сначала всегда SendLimits
+        - режим 'currents': SendControl(En_Is=1, Kl_15=0 [+GearCtrl, MotorCtrl, ReqState])
+                           затем SendTorque(Isd/Iq)
+        - режим 'speed'   : SendControl(En_Is=0, Kl_15=1, ns [+GearCtrl, MotorCtrl, ReqState])
+        - режим 'torque'  : SendControl(En_Is=0, Kl_15=1, Ms [+GearCtrl, MotorCtrl, ReqState])
         """
         if not self.client:
             self.ui_log("[WS] клиент не привязан", "ERR")
             return
 
+        # как в старом gui_ws: сначала отправляем лимиты
+        self.send_limits_now()
+
         gear_code = self._gear_code_or_none()
         mode = self.state.mode_var.get()
+        motor_code = MOTOR_MODE_MAP.get(mode, 1)
 
         if mode == "currents":
-            # режим тока (момента): сначала общий контроль, потом Isd/Iq
+            # режим тока: общий контроль + токи Id/Iq
             try:
                 isd = self._get_float(self.state.Id_var, "Id")
                 isq = self._get_float(self.state.Iq_var, "Iq")
@@ -121,6 +131,9 @@ class Controllers:
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
+            if motor_code is not None:
+                ctrl["MotorCtrl"] = int(motor_code)
+                ctrl["ReqState"] = int(motor_code)
 
             self.client.send_json_threadsafe(ctrl)
             self.client.send_json_threadsafe({
@@ -129,11 +142,13 @@ class Controllers:
                 "Isd": isd,
                 "Isq": isq,
             })
-            self.ui_log(f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
-                        + (f", Gear={gear_code}" if gear_code is not None else ""))
-
+            self.ui_log(
+                f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
+                + (f", Gear={gear_code}" if gear_code is not None else "")
+            )
 
         elif mode == "torque":
+            # моментный режим: посылаем Ms
             try:
                 Ms = self._get_float(self.state.torque_var, "Ms")
             except Exception:
@@ -141,19 +156,21 @@ class Controllers:
 
             ctrl = {
                 "cmd": "SendControl",
-                "En_Is": False,                      # ???
-                "Kl_15": True,                     # ???
+                "En_Is": False,
+                "Kl_15": True,
                 "Ms": Ms,
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
+            if motor_code is not None:
+                ctrl["MotorCtrl"] = int(motor_code)
+                ctrl["ReqState"] = int(motor_code)
 
             self.client.send_json_threadsafe(ctrl)
             self.ui_log(
                 f"[UI] ▶ Отправлено: режим Момент (Ms={Ms:.1f})"
                 + (f", Gear={gear_code}" if gear_code is not None else "")
             )
-
 
         else:
             # режим частоты: только SendControl с ns
@@ -170,53 +187,72 @@ class Controllers:
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
+            if motor_code is not None:
+                ctrl["MotorCtrl"] = int(motor_code)
+                ctrl["ReqState"] = int(motor_code)
 
             self.client.send_json_threadsafe(ctrl)
-            self.ui_log(f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
-                        + (f", Gear={gear_code}" if gear_code is not None else ""))
+            self.ui_log(
+                f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
+                + (f", Gear={gear_code}" if gear_code is not None else "")
+            )
 
     # ---- точечные команды (кнопки в блоках) ----
 
     def send_control_now(self) -> None:
-        """Применить текущий режим и ключевые флаги (и, если режим 'speed', то ns)."""
+        """Применить текущий режим и ключевые флаги (и, если режим 'speed/torque', то ns/Ms)."""
         if not self.client:
             self.ui_log("[WS] клиент не привязан", "ERR")
             return
 
-        if self.state.mode_var.get() == "speed":
+        mode = self.state.mode_var.get()
+        motor_code = MOTOR_MODE_MAP.get(mode, 1)
+
+        if mode == "speed":
             try:
                 ns = self._get_float(self.state.speed_var, "ns")
             except Exception:
                 return
-            self.client.send_json_threadsafe({
+            payload = {
                 "cmd": "SendControl",
                 "En_Is": False,
                 "Kl_15": True,
-                "ns": ns
-            })
-            self.ui_log(f"[UI] SendControl: Частота (ns={ns:.0f})", "UI")
+                "ns": ns,
+            }
+            if motor_code is not None:
+                payload["MotorCtrl"] = int(motor_code)
+                payload["ReqState"] = int(motor_code)
+            self.client.send_json_threadsafe(payload)
+            self.ui_log(f"[UI] SendControl: Частота (ns={ns:.0f}, MotorCtrl={motor_code})", "UI")
 
-        elif self.state.mode_var.get() == "torque":
+        elif mode == "torque":
             try:
                 Ms = self._get_float(self.state.torque_var, "Ms")
             except Exception:
                 return
-            self.client.send_json_threadsafe({
+            payload = {
                 "cmd": "SendControl",
-                "En_Is": False,  # ???
+                "En_Is": False,  # momentный режим — En_Is=0, Kl_15=1
                 "Kl_15": True,
-                "Ms": Ms
-            })
-            self.ui_log(f"[UI] SendControl: Момент (Ms={Ms:.1f})", "UI")
-
+                "Ms": Ms,
+            }
+            if motor_code is not None:
+                payload["MotorCtrl"] = int(motor_code)
+                payload["ReqState"] = int(motor_code)
+            self.client.send_json_threadsafe(payload)
+            self.ui_log(f"[UI] SendControl: Момент (Ms={Ms:.1f}, MotorCtrl={motor_code})", "UI")
 
         else:
-            self.client.send_json_threadsafe({
+            payload = {
                 "cmd": "SendControl",
                 "En_Is": True,
-                "Kl_15": False
-            })
-            self.ui_log("[UI] SendControl: Токи (En_Is=1, Kl_15=0)", "UI")
+                "Kl_15": False,
+            }
+            if motor_code is not None:
+                payload["MotorCtrl"] = int(motor_code)
+                payload["ReqState"] = int(motor_code)
+            self.client.send_json_threadsafe(payload)
+            self.ui_log("[UI] SendControl: Токи (En_Is=1, Kl_15=0, MotorCtrl={})".format(motor_code), "UI")
 
     def send_limits_now(self) -> None:
         """Отправить лимиты (M_min/M_max/M_grad_max/n_max)."""
@@ -266,13 +302,28 @@ class Controllers:
         self.update_mode_controls()
         self.ui_log(
             "[UI] Режим выбран: "
-            + ("Токи (Id/Iq) — будет отправлено En_Is=1, Kl_15=0"
-               if val == "currents" else
-               "Момент (Ms) — будет отправлено En_Is=0, Kl_15=1"
-               if val == "torque" else
-               "Частота (ns) — будет отправлено En_Is=0, Kl_15=1")
+            + (
+                "Токи (Id/Iq) — будет отправлено En_Is=1, Kl_15=0"
+                if val == "currents" else
+                "Момент (Ms) — будет отправлено En_Is=0, Kl_15=1"
+                if val == "torque" else
+                "Частота (ns) — будет отправлено En_Is=0, Kl_15=1"
+            )
             + " → нажмите «Отправить»"
         )
+
+    def apply_mode(self) -> None:
+        """
+        Аналог старого set_mode_from_ui:
+        - speed/torque: только SendControl
+        - currents: SendControl + SendTorque
+        """
+        mode = self.state.mode_var.get()
+        if mode in ("speed", "torque"):
+            self.send_control_now()
+        else:  # currents
+            self.send_control_now()
+            self.send_torque_now()
 
     def set_gear_from_ui(self) -> None:
         """Кнопка/радиокнопка передачи."""
@@ -402,12 +453,15 @@ class Controllers:
             "id": 0x555,
             "len": 8,
             "flags": 0,
-            # простая упаковка значений в "данные"
-            "data0": int(Id) & 0xFF,
-            "data1": int(Iq) & 0xFF,
+            "ts": 10,  # как в старом gui_ws (можно заменить на time.time() при желании)
+            "data0": int(Id * 10) & 0xFF,
+            "data1": int(Iq * 10) & 0xFF,
             "data2": int(torque) & 0xFF,
-            "data3": int(speed) & 0xFF,
-            "data4": 0, "data5": 0, "data6": 0, "data7": 0,
+            "data3": int(speed / 10) & 0xFF,
+            "data4": 0,
+            "data5": 0,
+            "data6": 0,
+            "data7": 0,
         }
         self.client.send_json_threadsafe(can_msg)
         self.ui_log("[UI] FakeCAN sent", can_msg)

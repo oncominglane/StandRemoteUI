@@ -1,4 +1,4 @@
-Запуск
+## Запуск
 сервер: 
 C:\Users\n.tulupov\Desktop\StandRemoteUI\server>powershell -ExecutionPolicy Bypass -File .\build_ninja.ps1 -VcpkgToolchain "C:\vcpkg\scripts\buildsystems\vcpkg.cmake"
 .\server\build\MarathonWS.exe

@@ -75,8 +75,8 @@ def init_style(dark=False):
 
 
 from network import WSClient
-#WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
-WS_URL = "ws://192.168.0.19:9000"
+WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
+#WS_URL = "ws://192.168.0.19:9000"
 
 def make_focusable_scale(scale, var, step=1.0):
     def on_click(event):
@@ -118,10 +118,8 @@ def create_gui():
 
     # --- КНОПКА ОТПРАВКИ ВСЕГО ---
     def send_all():
-
+        # сначала всегда шлём актуальные лимиты
         send_limits_now()
-        send_control_now()
-        send_torque_now()
 
         # аккуратно читаем выбранную передачу (если уже добавляли рамку передач)
         def _gear_code_or_none():
@@ -129,21 +127,13 @@ def create_gui():
                 return GEAR_MAP.get(gear_var.get(), 2)  # 2 = N
             except Exception:
                 return None
-            
+
         mode = mode_var.get()
         motor_code = MOTOR_MODE_MAP.get(mode, 1)
-
         gear_code = _gear_code_or_none()
-        mode = mode_var.get()
-
-        try:
-            M_desired = float(torque_var.get() or 0.0)
-        except Exception:
-            ui_log("[UI] Некорректное значение Torque (M_desired)", "ERR")
-            M_desired = 0.0
 
         if mode == "currents":
-            # режим тока (момента): сначала общий контроль, потом Isd/Iq
+            # --- РЕЖИМ ТОКОВ: шлём только Id/Iq (плюс служебный SendControl) ---
             try:
                 isd = float(Id_var.get() or 0.0)
                 isq = float(Iq_var.get() or 0.0)
@@ -151,30 +141,34 @@ def create_gui():
                 ui_log("[UI] Некорректные Id/Iq — проверьте поля", "ERR")
                 return
 
+            # включаем токовый режим
             ctrl = {
                 "cmd": "SendControl",
                 "En_Is": True,
-                "Kl_15": False,
+                "Kl_15": True,
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
-
             if motor_code is not None:
                 ctrl["MotorCtrl"] = int(motor_code)
                 ctrl["ReqState"] = int(motor_code)
 
             client.send_json_threadsafe(ctrl)
+
+            # отправляем только токи
             client.send_json_threadsafe({
                 "cmd": "SendTorque",
                 "En_Is": True,
                 "Isd": isd,
                 "Isq": isq,
             })
-            ui_log(f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
-                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else ""))
+            ui_log(
+                f"[UI] ▶ Отправлено: режим Токи (Id/Iq={isd:.2f}/{isq:.2f})"
+                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else "")
+            )
 
         else:
-            # режим скорости (оборотов): один пакет SendControl
+            # --- РЕЖИМ ОБОРОТОВ: шлём только ns (со слайдера Speed) ---
             try:
                 ns = float(speed_var.get() or 0.0)
             except Exception:
@@ -185,8 +179,7 @@ def create_gui():
                 "cmd": "SendControl",
                 "En_Is": False,
                 "Kl_15": True,
-                "ns": ns,
-                "M_desired": M_desired,  # <-- добавлено
+                "ns": ns,   # только скорость
             }
             if gear_code is not None:
                 ctrl["GearCtrl"] = int(gear_code)
@@ -195,8 +188,10 @@ def create_gui():
                 ctrl["ReqState"] = int(motor_code)
 
             client.send_json_threadsafe(ctrl)
-            ui_log(f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
-                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else ""))
+            ui_log(
+                f"[UI] ▶ Отправлено: режим Частота (ns={ns:.0f})"
+                + (f", Gear={gear_var.get()}({gear_code})" if gear_code is not None else "")
+            )
 
     # Кнопка в тулбаре
     ttk.Button(toolbar, text="Отправить", style="Accent.TButton", command=send_all)\
@@ -338,7 +333,7 @@ def create_gui():
             payload = {
                 "cmd": "SendControl",
                 "En_Is": True,
-                "Kl_15": False,
+                "Kl_15": True,
                 "MotorCtrl": motor_code,
             }
             client.send_json_threadsafe(payload)

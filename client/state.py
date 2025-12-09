@@ -37,6 +37,11 @@ FIELD_ALIASES = {
 # Маппинг коробки передач (по DBC VcuActualGear)
 GEAR_MAP = {"D": 4, "R": 3, "N": 2}
 REV_GEAR_MAP = {v: k for k, v in GEAR_MAP.items()}
+MOTOR_MODE_MAP = {
+    "currents": 1,
+    "speed": 2,
+    "torque": 1,  # новый режим "torque" считаем токовым
+}
 
 # Сколько точек держим в буферах для графиков/карт
 TREND_CAP = 3000

@@ -70,10 +70,10 @@ class WSClient:
         backoff = 1.0 # начальное время ожидания перед повторным подключением
         while self._running.is_set(): # пока флаг _running установлен, пытаемся держать соединение
             try:
-                self.on_status(f"Подключение к {self.url}...")
+                self.on_status(f"connecting to {self.url}...")
                 async with websockets.connect(self.url) as ws: # открываем WebSocket-соединение
                     self.ws = ws # сохраняем ссылку на соединение
-                    self.on_status("WS подключен")
+                    self.on_status("WS connected")
                     backoff = 1.0
                     while self._running.is_set():
                         msg = await ws.recv()
@@ -83,30 +83,30 @@ class WSClient:
                 break
 
             except Exception as e:
-                self.on_error(f"WS ошибка: {e}")
-                self.on_status("WS отключен")
+                self.on_error(f"WS error: {e}")
+                self.on_status("WS disabled")
                 self.ws = None
                 # экспоненциальный бэкофф
                 await asyncio.sleep(backoff) # Ждём backoff секунд перед повторным подключением.
                 backoff = min(backoff * 2, 10.0)
-        self.on_status("WS остановлен")
+        self.on_status("WS stopped")
 
     def send_cmd_threadsafe(self, cmd: str): # Отправляет команду на сервер из любого потока (главного Tkinter или ещё откуда-то).
         """Без await. Можно вызывать из любого потока (в т.ч. из Tk)."""
         if not self.loop:
-            self.on_error("WS: нет event loop")
+            self.on_error("WS: no event loop")
             return # Если цикл событий ещё не создан — пишем ошибку
         async def _send():
             if self.ws is None:
-                raise RuntimeError("WS не подключен")
+                raise RuntimeError("WS not connected")
             await self.ws.send(json.dumps({"cmd": cmd})) #Отправляет JSON вида {"cmd": "<команда>"}.
         fut = asyncio.run_coroutine_threadsafe(_send(), self.loop) # Запускаем _send() в чужом asyncio-цикле (self.loop) из текущего потока.
         def _cb(f):
             try:
                 f.result()
-                self.on_status(f"Отправлено: {cmd}")
+                self.on_status(f"sent: {cmd}")
             except Exception as e:
-                self.on_error(f"Ошибка отправки '{cmd}': {e}")
+                self.on_error(f"sending error '{cmd}': {e}")
         fut.add_done_callback(_cb) # Привязываем коллбэк к завершению задачи fut.send_cmd_threadsafe
 
     def send_json_threadsafe(self, payload: dict):
@@ -115,13 +115,13 @@ class WSClient:
             return
         async def _send():
             if self.ws is None:
-                raise RuntimeError("WS не подключен")
+                raise RuntimeError("WS not connected")
             await self.ws.send(json.dumps(payload))
         fut = asyncio.run_coroutine_threadsafe(_send(), self.loop)
         def _cb(f):
             try:
                 f.result()
-                self.on_status(f"Отправлено: {payload.get('cmd', '<no cmd>')}")
+                self.on_status(f"sent: {payload.get('cmd', '<no cmd>')}")
             except Exception as e:
-                self.on_error(f"Ошибка отправки: {e}")
+                self.on_error(f"sending error: {e}")
         fut.add_done_callback(_cb)

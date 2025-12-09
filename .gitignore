@@ -2,6 +2,7 @@
 /client/__pycache__/
 /server/__pycache__/
 /server/build/
+/server/build/
 /server/Stand_Marathon/build/
 /server/Stand_Marathon/Include/CAN_DBC_MODULE/build/
 /client/build/

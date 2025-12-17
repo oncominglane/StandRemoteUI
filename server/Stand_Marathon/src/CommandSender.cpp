@@ -47,8 +47,16 @@ void CommandSender::sendControlCommand(CANInterface& can, const DataModel& data)
     PackSignalToBytes(payload, data.Kl_15 ? 1 : 0, 8, 1);
 
     // 2. MCUDesiredTorque (11 бит, -1023 смещение, 1.0 масштаб), старт с 7
-    int32_t torque_raw = static_cast<int32_t>((data.M_desired + 1023.0f));
-    PackSignalToBytes(payload, torque_raw, 7, 11);
+    int32_t torque_raw = 0;
+    if(data.MotorCtrl == 1){
+        torque_raw = static_cast<int32_t>((data.M_desired + 1023.0f));
+        PackSignalToBytes(payload, torque_raw, 7, 11);
+    }
+    else{
+        int32_t speed = data.M_desired / 15.675;
+        torque_raw = static_cast<int32_t>((speed + 1023.0f));
+        PackSignalToBytes(payload, torque_raw, 7, 11);
+    }
 
     // 3. SurgeDamperState (2 бита, старт с 10)
     PackSignalToBytes(payload, data.SurgeDamperState & 0x03, 10, 2);

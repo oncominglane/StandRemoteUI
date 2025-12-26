@@ -1,4 +1,4 @@
-// StateMachine.cpp
+//Stand_Marathon/src/StateMachine.cpp
 #include "StateMachine.h"
 #include "CommandSender.h"
 #include <iostream>
@@ -34,7 +34,7 @@ void StateMachine::periodicTx() {
 
     // 0x046 (control) — каждые 20 мс
     if (now - t_ctrl_ >= PERIOD_CTRL) {
-        // разумный «safety-gate»: посылать управление только при включенном зажигании
+        //  посылать управление только при включенном зажигании
         CommandSender::sendControlCommand(canInterface, data); // 0x046
         t_ctrl_ = now;
     }
@@ -73,10 +73,10 @@ void StateMachine::update() {
     }
 }
 
-// --- Реализация состояний (как у тебя) ---
+
 
 void StateMachine::handleIdle() {
-    // ничего, просто ждём
+    //  просто ждём
     std::cout << "[STATE] Idle\n";
 }
 

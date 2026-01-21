@@ -21,12 +21,11 @@ class WSClient:
         self.ws = None  # активное соединение websockets.connect(...) (или None, если нет подключения).
         self._running = threading.Event()  # потокобезопасный флаг («работать/остановиться»).
         self._running.clear()
+        self._main_task = None  # asyncio.Task для _connect_forever()
 
     def start(self):
         if self.thread and self.thread.is_alive():
             return # если поток уже создан и работает — выходим, повторный запуск не нужен
-        if self.thread and self.thread.is_alive():
-            return
         if websockets is None:
             self.on_error("Не найден модуль 'websockets'. Установите: pip install websockets")
             return
@@ -38,33 +37,64 @@ class WSClient:
         self._running.clear()
         if self.loop and self.loop.is_running():
             def _stop():
-                for task in asyncio.all_tasks(loop=self.loop):
-                    task.cancel() # отменяем все активные задачи в loop
-                self.loop.stop() # останавливаем цикл loop
-            self.loop.call_soon_threadsafe(_stop) # просим loop в другом потоке безопасно выполнить _stop().
-        # дождаться завершения фонового потока (не обязательно, но аккуратнее)
+                # 1) отменяем только главный task
+                if self._main_task and not self._main_task.done():
+                    self._main_task.cancel()
+
+                # 2) аккуратно закрываем websocket (если есть)
+                if self.ws is not None:
+                    async def _close():
+                        try:
+                            await self.ws.close()
+                        except Exception:
+                            pass
+                    asyncio.create_task(_close())
+
+                # 3) останавливаем loop чуть позже, чтобы cancel/close успели пройти
+                self.loop.call_later(0.05, self.loop.stop)
+
+            self.loop.call_soon_threadsafe(_stop)
+
         if self.thread:
-            try:    
+            try:
                 self.thread.join(timeout=3.0)
             except Exception:
                 pass
             finally:
                 self.thread = None
 
+
     def _run_loop(self):
-        self.loop = asyncio.new_event_loop() # Создаём новый asyncio-цикл событий 
-        asyncio.set_event_loop(self.loop) # Устанавливаем его как текущий цикл для этого потока
-        try: # Запускаем асинхронную функцию _connect_forever() и ждём её завершения
-            self.loop.run_until_complete(self._connect_forever())
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        # создаём задачу и крутим loop "вечно"
+        self._main_task = self.loop.create_task(self._connect_forever())
+
+        try:
+            self.loop.run_forever()
         except Exception as e:
             self.on_error(f"Fatal WS loop error: {e}\n{traceback.format_exc()}")
         finally:
-            try: # останавливаем цикл, если он всё ещё работает, и закрываем его
-                if self.loop.is_running():
-                    self.loop.stop()
+            # добиваем pending-задачи, чтобы не было предупреждений и "stopped before future completed"
+            try:
+                pending = asyncio.all_tasks(loop=self.loop)
+                for t in pending:
+                    t.cancel()
+                if pending:
+                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             except Exception:
                 pass
-            self.loop.close()
+
+            try:
+                self.loop.close()
+            except Exception:
+                pass
+
+            self.loop = None
+            self._main_task = None
+            self.ws = None
+
 
     async def _connect_forever(self):
         backoff = 1.0 # начальное время ожидания перед повторным подключением
@@ -76,8 +106,14 @@ class WSClient:
                     self.on_status("WS connected")
                     backoff = 1.0
                     while self._running.is_set():
-                        msg = await ws.recv()
-                        self.on_message(msg)# получаем сообщения из WebSocket
+                        try:
+                            msg = await ws.recv()
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            # соединение оборвалось -> вывалимся в общий except и пойдём на бэкофф
+                            break
+                        self.on_message(msg)
 
             except asyncio.CancelledError:
                 break

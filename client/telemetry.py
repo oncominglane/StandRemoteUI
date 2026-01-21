@@ -389,6 +389,7 @@ class Telemetry:
 
         try:
             tree.insert("", "end", values=values)
+            tree.yview_moveto(1.0) # автопрокрутка вниз
             # подрежем старые строки визуально, если очень много
             if len(tree.get_children()) > self.state.max_rows:
                 tree.delete(tree.get_children()[0])

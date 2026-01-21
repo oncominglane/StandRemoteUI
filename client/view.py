@@ -199,8 +199,26 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     ttk.Button(toolbar, text="💾 Save", width=14,
                command=lambda: handlers.get("send_cmd", lambda *_: None)("SaveCfg")).pack(side="left", padx=4, pady=PAD)
 
+    # поле адреса WS (host:port или ws://host:port)
+    state.ws_addr_var = sv(getattr(state, "ws_addr_var", None), "192.168.8.100:9000")
+
     pill_wrap = _make_pill(toolbar, state.conn_var, state.conn_color, style)
     pill_wrap.pack(side="right", padx=6, pady=6)
+
+    # Connect UI справа (перед статусом)
+    connect_btn = ttk.Button(
+        toolbar,
+        text="Connect",
+        command=handlers.get("connect_ws", lambda: None),
+    )
+    connect_btn.pack(side="right", padx=(6, 4), pady=PAD)
+
+    ws_entry = ttk.Entry(toolbar, textvariable=state.ws_addr_var, width=24)
+    ws_entry.pack(side="right", padx=(6, 0), pady=PAD)
+
+    # Enter в поле = Connect
+    ws_entry.bind("<Return>", lambda e: (handlers.get("connect_ws", lambda: None)(), "break")[1])
+
 
     # 4) Вкладки
     notebook = ttk.Notebook(root); notebook.pack(fill="both", expand=True)
@@ -265,9 +283,9 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
 
             # настроим spinbox
             try:
-                main_entry.configure(textvariable=state.speed_var, from_=0, to=20000, increment=1.0)
+                main_entry.configure(textvariable=state.speed_var, from_=0, to=5000, increment=1.0)
             except Exception:
-                main_entry.config(textvariable=state.speed_var, from_=0, to=20000, increment=1.0)
+                main_entry.config(textvariable=state.speed_var, from_=0, to=5000, increment=1.0)
             _bind_spin_steps(main_entry, state.speed_var, step=1.0)
 
             def _on_release(_=None):

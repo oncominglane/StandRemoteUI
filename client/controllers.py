@@ -18,6 +18,7 @@ class Controllers:
         self.state = state
         self.views = None          # присвоится через attach_views()
         self.client = None         # присвоится через bind_network()
+        self.client_factory = None  # функция (url)->WSClient
 
     # ---- wiring ----
 
@@ -28,6 +29,59 @@ class Controllers:
     def bind_network(self, client) -> None:
         """Подключаем WSClient (из network.py)."""
         self.client = client
+
+    def bind_network_factory(self, factory) -> None:
+        """Передаём фабрику WSClient(url)->client."""
+        self.client_factory = factory
+
+    def _normalize_ws_url(self, addr: str) -> str:
+        a = (addr or "").strip()
+        if not a:
+            return ""
+        # разрешим ввод "192.168.1.10" или "192.168.1.10:9000" или "ws://..."
+        if a.startswith("ws://") or a.startswith("wss://"):
+            return a
+        if ":" not in a:
+            a = a + ":9000"
+        return "ws://" + a
+
+
+    def disconnect_ws(self) -> None:
+        if self.client:
+            try:
+                self.client.stop()
+            except Exception:
+                pass
+            self.client = None
+
+
+    def connect_ws(self, addr: str) -> None:
+        if not self.client_factory:
+            self.ui_log("[WS] client factory not set", "ERR")
+            return
+
+        url = self._normalize_ws_url(addr)
+        if not url:
+            self.ui_log("[WS] empty address", "ERR")
+            return
+
+        # остановим прошлый клиент, если был
+        self.disconnect_ws()
+
+        # создаём новый
+        try:
+            client = self.client_factory(url)
+        except Exception as e:
+            self.ui_log("[WS] create failed:", e, "ERR")
+            return
+
+        self.client = client
+        try:
+            client.start()
+            self.ui_log("[WS] connect:", url)
+        except Exception as e:
+            self.ui_log("[WS] start failed:", e, "ERR")
+
 
     # ---- утилиты ----
 
@@ -72,6 +126,8 @@ class Controllers:
             "send_control_now": self.send_control_now,
             "apply_mode": self.apply_mode,           # аналог старого set_mode_from_ui
             "set_mode_from_ui": self.apply_mode,     # синоним для совместимости
+
+            "connect_ws": self.connect_ws_from_ui,
 
             # синонимы на всякий случай
             "send_limits_now": self.send_limits_now,
@@ -337,6 +393,14 @@ class Controllers:
             "GearCtrl": int(code)
         })
         self.ui_log(f"[UI] Gear set to {sel} (code {code})", "UI")
+
+    def connect_ws_from_ui(self) -> None:
+        addr = ""
+        try:
+            addr = self.state.ws_addr_var.get()
+        except Exception:
+            pass
+        self.connect_ws(addr)
 
     # ---- визуальные состояния (enable/disable) ----
 

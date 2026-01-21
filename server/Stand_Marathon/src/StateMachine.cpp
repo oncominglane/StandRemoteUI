@@ -71,6 +71,22 @@ void StateMachine::update() {
         case State::Save_Cfg: handleSaveCfg(); break;
         case State::Read_Cfg: handleReadCfg(); break;
     }
+
+    if(data.ns > data.n_max){
+        isOverSpeed = true;
+    }
+
+    if (isOverSpeed)
+    {
+        data.M_desired = 0;
+        data.Isd = 0;
+        data.Isq = 0;
+    }
+
+    if(data.ns == 0){
+        isOverSpeed = false;
+    }
+    
 }
 
 // --- Реализация состояний (как у тебя) ---
@@ -85,13 +101,13 @@ void StateMachine::handleInit() {
     std::cout << "CAN Initialized\n";
     setState(State::Read2);
     // инициализируем канал параметрами из DataModel (после загрузки INI)
-    /*if (canInterface.init(data.canChannel, data.canBaud, data.canFlags)) { // корректнее, чем хардкод:contentReference[oaicite:1]{index=1}
+    if (canInterface.init(data.canChannel, data.canBaud, data.canFlags)) { // корректнее, чем хардкод:contentReference[oaicite:1]{index=1}
         std::cout << "CAN Initialized\n";
         setState(State::Read2);
     } else {
         std::cerr << "CAN Init failed!\n";
         setState(State::Stop);
-    }*/
+    }
 }
 
 CANMessage StateMachine::handleRead2() {

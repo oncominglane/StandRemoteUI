@@ -24,6 +24,9 @@
 #include <mutex>
 #include <cstdlib>
 
+// твой wrapper
+#include "YokogawaDL850E.h"
+
 using tcp = boost::asio::ip::tcp;
 namespace websocket = boost::beast::websocket;
 using json = nlohmann::json;

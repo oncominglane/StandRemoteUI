@@ -22,6 +22,8 @@ private:
     ConfigManager& config;
     State currentState = State::Idle;
 
+    bool isOverSpeed = false;
+
     using clock = std::chrono::steady_clock;
     clock::time_point t0_ = clock::now();
     clock::time_point t_ctrl_  = t0_;

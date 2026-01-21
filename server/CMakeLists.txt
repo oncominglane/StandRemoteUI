@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(PCAN_INCLUDE "${CMAKE_SOURCE_DIR}/Stand_Marathon/Include")
 # ВАЖНО: у тебя .lib лежит в подпапке VC_LIB
 set(PCAN_LIB_DIR "${CMAKE_SOURCE_DIR}/Stand_Marathon/lib/x64/VC_LIB")
+set(YOKO_LIB_DIR "${CMAKE_SOURCE_DIR}/Stand_Marathon/lib")
 
 # Зависимости через vcpkg
 find_package(Boost REQUIRED COMPONENTS system thread)
@@ -23,10 +24,54 @@ set(CORE_SOURCES
     Stand_Marathon/src/ConfigManager.cpp
     Stand_Marathon/src/MarathonLogic.cpp
     Stand_Marathon/src/StateMachine.cpp
+    Stand_Marathon/src/YokogawaDL850E.cpp
 )
 
 # Экзешник с WS
 add_executable(MarathonWS ws_server.cpp ${CORE_SOURCES})
+
+# ===== Yokogawa DL850E FreeRun API (ScAPI) =====
+if (WIN32)
+    # x64 vs x86
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(SCAPI_LIB  "${YOKO_LIB_DIR}/ScAPI64.lib")
+        set(SCAPI_DLL  "${YOKO_LIB_DIR}/ScAPI64.dll")
+        set(TMCTL_DLL  "${YOKO_LIB_DIR}/tmctl64.dll")
+    else()
+        set(SCAPI_LIB  "${YOKO_LIB_DIR}/ScAPI.lib")
+        set(SCAPI_DLL  "${YOKO_LIB_DIR}/ScAPI.dll")
+        set(TMCTL_DLL  "${YOKO_LIB_DIR}/tmctl.dll")
+    endif()
+
+    if (NOT EXISTS "${SCAPI_LIB}")
+        message(FATAL_ERROR "ScAPI lib not found: ${SCAPI_LIB}. Проверь, что лежит x64 ScAPI64.lib")
+    endif()
+
+    target_link_libraries(MarathonWS PRIVATE "${SCAPI_LIB}")
+
+    # Копируем DLL рядом с exe, чтобы не ловить 'dll not found'
+    if (EXISTS "${SCAPI_DLL}")
+        add_custom_command(TARGET MarathonWS POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${SCAPI_DLL}"
+                    "$<TARGET_FILE_DIR:MarathonWS>/"
+        )
+    else()
+        message(WARNING "ScAPI DLL not found: ${SCAPI_DLL} (exe может не запуститься без DLL)")
+    endif()
+
+    if (EXISTS "${TMCTL_DLL}")
+        add_custom_command(TARGET MarathonWS POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${TMCTL_DLL}"
+                    "$<TARGET_FILE_DIR:MarathonWS>/"
+        )
+    else()
+        message(WARNING "tmctl DLL not found: ${TMCTL_DLL} (exe может не запуститься без DLL)")
+    endif()
+endif()
+# ===== end ScAPI =====
+
 
 target_include_directories(MarathonWS PRIVATE
     ${PCAN_INCLUDE}
@@ -34,6 +79,7 @@ target_include_directories(MarathonWS PRIVATE
 )
 
 target_link_directories(MarathonWS PRIVATE ${PCAN_LIB_DIR})
+target_link_directories(MarathonWS PRIVATE ${YOKO_LIB_DIR})
 
 target_link_libraries(MarathonWS PRIVATE
     CAN_DBC_MODULE

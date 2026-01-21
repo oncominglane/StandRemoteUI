@@ -78,10 +78,10 @@ struct DataModel {
     float motorRs = 0.0f;
     float Wmechanical = 0.0f;
 
-    int16_t Ud = 0;
-    int16_t Uq = 0;
-    int16_t Id = 0;
-    int16_t Iq = 0;
+    float Ud = 0;
+    float Uq = 0;
+    float Id = 0;
+    float Iq = 0;
 
     // --- MCU_Status (BO_ 125) ---
     float   MCU_OfsAl        = 0.0f;  // [deg] scale 0.0878906

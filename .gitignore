@@ -1,8 +1,10 @@
 # build artifacts
 /client/__pycache__/
 /server/__pycache__/
-/server/build/
-/server/build/
+/server/build/CMakeFiles/
+/server/build/MarathonWS.dir/
+/server/build/Stand_Marathon/
+/server/build/x64/
 /server/Stand_Marathon/build/
 /server/Stand_Marathon/Include/CAN_DBC_MODULE/build/
 /client/build/

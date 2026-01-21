@@ -119,9 +119,9 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
         }
 
         case 0x7f: { // MCU_FluxParams (BO_ 127)
-            data.Emf          = static_cast<float>(UnpackSignalFromBytes(msg.data, 7, 16));
+            data.Emf          = static_cast<float>(UnpackSignalFromBytes(msg.data, 7, 16)) * 0.001f;
             data.Welectrical  = static_cast<float>(UnpackSignalFromBytes(msg.data, 23, 16));
-            data.motorRs      = static_cast<float>(UnpackSignalFromBytes(msg.data, 39, 16));
+            data.motorRs      = static_cast<float>(UnpackSignalFromBytes(msg.data, 39, 16)) * 0.001f;
             data.Wmechanical  = static_cast<float>(UnpackSignalFromBytes(msg.data, 55, 16));
 
             std::cout << "[RX] FluxParams: Emf=" << data.Emf
@@ -132,10 +132,10 @@ void MarathonLogic::updateFromCAN(const CANMessage& msg, DataModel& data) {
         }
 
         case 0x7e: { // MCU_CurrentVoltage (BO_ 126)
-            data.Ud = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 7, 16));
-            data.Uq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 23, 16));
-            data.Id = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 39, 16));
-            data.Iq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 55, 16));
+            data.Ud = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 7, 16)) * 0.1f - 3276.0f;
+            data.Uq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 23, 16)) * 0.1f - 3276.0f;
+            data.Id = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 39, 16)) * 0.1f - 3276.0f;
+            data.Iq = static_cast<int16_t>(UnpackSignalFromBytes(msg.data, 55, 16)) * 0.1f - 3276.0f;
 
             std::cout << "[RX] CurrentVoltage: Ud=" << data.Ud
                       << " Uq=" << data.Uq

@@ -132,6 +132,13 @@ void CommandSender::sendLimitCommand(CANInterface& can, const DataModel& data) {
     // 6. Checksum (заглушка)
     PackSignalToBytes(payload, 0, 63, 8);
 
+    // 7. Max Speed
+    int32_t max_speed_raw = (int32_t)(data.n_max / 100.0f + 0.5f);
+    if (max_speed_raw < 0) max_speed_raw = 0;
+    if (max_speed_raw > 31) max_speed_raw = 31;
+    PackSignalToBytes(payload, (uint32_t)max_speed_raw, 43, 5);
+
+
     can.send(0x047, payload, 8);
 
     if (std::getenv("WS_LOG_CAN")) {

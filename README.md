@@ -5,6 +5,13 @@ C:\Users\n.tulupov\Desktop\StandRemoteUI\server>powershell -ExecutionPolicy Bypa
 клиент: python client/gui_ws.py
 
 
+Запуск формирования архива бинарников
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\work\StandRemoteUI\make_bundle.ps1
+
+Запуск апдейт-скрипта который скачивает релиз с гита и запускает клиент и сервер
+powershell -ExecutionPolicy Bypass -File C:\work\StandRemoteUI\update_standcontrol.ps1
+
+
 
 +--------------------+             +-------------------------------+
 | Главный поток      |             | Фоновый поток с asyncio       |

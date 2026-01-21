@@ -30,7 +30,7 @@ $ZipOut   = Join-Path $OutDir "stand_bundle.zip"
 $Manifest = Join-Path $OutDir "manifest.txt"
 
 # === HELPERS ===
-function Ensure-Exists([string]$path, [string]$label) {
+function Assert-PathExists([string]$path, [string]$label) {
   if (-not (Test-Path $path)) { throw "$label not found: $path" }
 }
 
@@ -46,14 +46,14 @@ function Get-DumpbinDependents([string]$exePath) {
   return $dlls | Sort-Object -Unique
 }
 
-function Is-SystemDllName([string]$dll) {
+function Test-SystemDllName([string]$dll) {
   $n = $dll.ToLowerInvariant()
   return @(
     "kernel32.dll","ws2_32.dll","user32.dll","gdi32.dll","advapi32.dll","comctl32.dll"
   ) -contains $n
 }
 
-function Is-ApiSetName([string]$dll) {
+function Test-ApiSetName([string]$dll) {
   $n = $dll.ToLowerInvariant()
   return ($n.StartsWith("api-ms-win-") -or $n.StartsWith("ext-ms-"))
 }
@@ -67,7 +67,7 @@ function Find-FileInDirs([string]$file, [string[]]$dirs) {
   return $null
 }
 
-function Where-First([string]$name) {
+function Find-FirstInPath([string]$name) {
   try {
     $res = & where.exe $name 2>$null
     if ($res) {
@@ -112,9 +112,9 @@ function Find-MsvcCrtRedistDir() {
 # === START ===
 Write-Host "make_bundle: start"
 
-Ensure-Exists $Dumpbin  "dumpbin.exe"
-Ensure-Exists $ServerExe "Server EXE"
-Ensure-Exists $ClientExe "Client EXE"
+Assert-PathExists $Dumpbin  "dumpbin.exe"
+Assert-PathExists $ServerExe "Server EXE"
+Assert-PathExists $ClientExe "Client EXE"
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
@@ -151,14 +151,14 @@ $missing = New-Object System.Collections.Generic.List[string]
 
 # Copy required non-system DLLs
 foreach ($dll in $need) {
-  if (Is-SystemDllName $dll) { continue }
-  if (Is-ApiSetName $dll) { continue }
+  if (Test-SystemDllName $dll) { continue }
+  if (Test-ApiSetName $dll) { continue }
 
   $dllLower = $dll.ToLowerInvariant()
   $path = $null
 
   $path = Find-FileInDirs $dll $searchDirs
-  if (-not $path) { $path = Where-First $dll }
+  if (-not $path) { $path = Find-FirstInPath $dll }
 
   # Special-case: PCANBasic.dll may be in System32 or in PCAN install directory
   if (-not $path -and $dllLower -eq "pcanbasic.dll") {
@@ -229,3 +229,5 @@ if ($missing.Count -gt 0) {
   Write-Warning "Missing DLLs exist. Check manifest.txt"
 }
   
+
+# powershell -NoProfile -ExecutionPolicy Bypass -File C:\work\StandRemoteUI\make_bundle.ps1

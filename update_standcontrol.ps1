@@ -36,3 +36,5 @@ Start-Process -WorkingDirectory $Dist -FilePath (Join-Path $Dist "MarathonWS.exe
 Start-Process -WorkingDirectory $Dist -FilePath (Join-Path $Dist "app.exe")
 
 Write-Host "Update complete."
+
+# powershell -ExecutionPolicy Bypass -File C:\work\StandRemoteUI\update_standcontrol.ps1

@@ -1,4 +1,4 @@
-// StateMachine.h
+//Stand_Marathon/src/StateMachine.h
 #pragma once
 #include <cstdint>
 #include <chrono>
@@ -30,7 +30,7 @@ private:
     clock::time_point t_limit_ = t0_;
     clock::time_point t_curr_  = t0_;
 
-    // Периоды сообщений (настрой по желанию)
+    // Периоды сообщений
     static constexpr std::chrono::milliseconds PERIOD_CTRL  {10};   // 0x046
     static constexpr std::chrono::milliseconds PERIOD_LIMIT {20};  // 0x047
     static constexpr std::chrono::milliseconds PERIOD_CURR  {10};   // 0x300

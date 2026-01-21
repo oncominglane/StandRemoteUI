@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Пути к PCAN
 set(PCAN_INCLUDE "${CMAKE_SOURCE_DIR}/Stand_Marathon/Include")
-# ВАЖНО: у тебя .lib лежит в подпапке VC_LIB
+# у тебя .lib лежит в подпапке VC_LIB
 set(PCAN_LIB_DIR "${CMAKE_SOURCE_DIR}/Stand_Marathon/lib/x64/VC_LIB")
 set(YOKO_LIB_DIR "${CMAKE_SOURCE_DIR}/Stand_Marathon/lib")
 

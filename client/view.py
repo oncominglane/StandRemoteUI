@@ -174,6 +174,10 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     state.M_grad_max_var = sv(state.M_grad_max_var, "50")
     state.n_max_var      = sv(state.n_max_var, "1000")
 
+    state.auto_delay_s_var = dv(getattr(state, "auto_delay_s_var", None), 0.5)
+    state.auto_status_var  = sv(getattr(state, "auto_status_var", None), "idle")
+    state.auto_points_var  = sv(getattr(state, "auto_points_var", None), "0")
+
     # массивы строк для CAN (12 полей: id, data0..7, len, flags, ts)
     if not getattr(state, "can_rx_data", None) or len(state.can_rx_data) != 12:
         state.can_rx_data = [sv(master=root) for _ in range(12)]
@@ -209,6 +213,7 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
     log_frame    = ttk.Frame(notebook); notebook.add(log_frame,  text="Logbook")
     trends_frame = ttk.Frame(notebook); notebook.add(trends_frame, text="Trends")
     maps_frame   = ttk.Frame(notebook); notebook.add(maps_frame,   text="Maps")
+    auto_frame = ttk.Frame(notebook); notebook.add(auto_frame, text="AutoCal")
 
     # === Control ===
     main_inner = ttk.Frame(main_frame)
@@ -369,6 +374,65 @@ def build_ui(root, state: State, handlers) -> ViewRefs:
         var = state.entry_vars.get(param) or tk.StringVar(master=root)
         state.entry_vars[param] = var
         ttk.Entry(flux_frame, textvariable=var, width=15).grid(row=i, column=1, padx=5, pady=3)
+
+    # === AutoCal ===
+    auto_inner = ttk.Frame(auto_frame)
+    auto_inner.pack(fill="both", expand=True, padx=10, pady=10)
+
+    auto_left = ttk.Frame(auto_inner, style="Card.TFrame")
+    auto_left.pack(side="left", fill="y", padx=(0, 10))
+
+    auto_limits = ttk.LabelFrame(auto_left, text="Limits")
+    auto_limits.pack(fill="x", padx=10, pady=(10, 8))
+    _labent(auto_limits, 0, 0, "M_min [Н·м]", state.M_min_var)
+    _labent(auto_limits, 0, 2, "M_max [Н·м]", state.M_max_var)
+    _labent(auto_limits, 1, 0, "M_grad_max",  state.M_grad_max_var)
+    _labent(auto_limits, 1, 2, "n_max [rpm]", state.n_max_var)
+
+    auto_ctl = ttk.LabelFrame(auto_left, text="Auto calibration")
+    auto_ctl.pack(fill="x", padx=10, pady=(0, 10))
+
+    ttk.Button(auto_ctl, text="Load XLSX",
+            command=handlers.get("auto_load_table", lambda: None)).grid(row=0, column=0, padx=6, pady=6, sticky="ew")
+    ttk.Button(auto_ctl, text="Delay…",
+            command=handlers.get("auto_delay_dialog", lambda: None)).grid(row=0, column=1, padx=6, pady=6, sticky="ew")
+
+    ttk.Button(auto_ctl, text="▶ Start",
+            command=handlers.get("auto_start", lambda: None)).grid(row=1, column=0, padx=6, pady=6, sticky="ew")
+    ttk.Button(auto_ctl, text="■ Stop",
+            command=handlers.get("auto_stop", lambda: None)).grid(row=1, column=1, padx=6, pady=6, sticky="ew")
+
+    ttk.Label(auto_ctl, text="Delay (s):").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+    ttk.Label(auto_ctl, textvariable=state.auto_delay_s_var).grid(row=2, column=1, sticky="w", padx=6, pady=4)
+
+    ttk.Label(auto_ctl, text="Points:").grid(row=3, column=0, sticky="e", padx=6, pady=4)
+    ttk.Label(auto_ctl, textvariable=state.auto_points_var).grid(row=3, column=1, sticky="w", padx=6, pady=4)
+
+    ttk.Label(auto_ctl, text="Status:").grid(row=4, column=0, sticky="e", padx=6, pady=4)
+    ttk.Label(auto_ctl, textvariable=state.auto_status_var).grid(row=4, column=1, sticky="w", padx=6, pady=4)
+
+    auto_ctl.grid_columnconfigure(0, weight=1)
+    auto_ctl.grid_columnconfigure(1, weight=1)
+
+    auto_right = ttk.Frame(auto_inner, style="Card.TFrame")
+    auto_right.pack(side="left", fill="both", expand=True)
+
+    ttk.Label(auto_right, text="LookupTable preview (Id/Iq)").pack(anchor="w", padx=10, pady=(10, 0))
+
+    auto_tree = ttk.Treeview(auto_right, columns=("idx", "Id", "Iq"), show="headings", height=20)
+    auto_tree.heading("idx", text="#")
+    auto_tree.heading("Id", text="Id_A")
+    auto_tree.heading("Iq", text="Iq_A")
+    auto_tree.column("idx", width=60, anchor="center")
+    auto_tree.column("Id",  width=120, anchor="center")
+    auto_tree.column("Iq",  width=120, anchor="center")
+
+    auto_ys = ttk.Scrollbar(auto_right, orient="vertical", command=auto_tree.yview)
+    auto_tree.configure(yscroll=auto_ys.set)
+
+    auto_tree.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+    auto_ys.pack(side="right", fill="y", pady=10)
+
 
     # === Logbook ===
     logbook_top = ttk.Frame(log_frame); logbook_top.pack(fill="both", expand=True, padx=10, pady=(10,5))

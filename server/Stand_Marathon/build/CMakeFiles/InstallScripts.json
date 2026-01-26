@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/gvn/GUI_Marathon/Stand_Marathon/build/cmake_install.cmake",
-		"C:/gvn/GUI_Marathon/Stand_Marathon/build/CAN_DBC_BUILD/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

@@ -1,4 +1,0 @@
-C:/gvn/GUI_Marathon/Stand_Marathon/build/CMakeFiles/Stand_Marathon.dir
-C:/gvn/GUI_Marathon/Stand_Marathon/build/CMakeFiles/ALL_BUILD.dir
-C:/gvn/GUI_Marathon/Stand_Marathon/build/CMakeFiles/ZERO_CHECK.dir
-C:/gvn/GUI_Marathon/Stand_Marathon/build/CAN_DBC_BUILD/CMakeFiles/CAN_DBC_MODULE.dir

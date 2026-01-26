@@ -1,41 +1,62 @@
 # make_bundle.ps1
+# Run this script from the repository root (e.g. C:\work\StandControl):
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\make_bundle.ps1
+#
 # Creates stand_bundle.zip containing:
 #   - server/build/MarathonWS.exe
 #   - client/dist/app.exe
-#   - PCANBasic.dll (from build or System32)
+#   - required vendor DLLs from server/Stand_Marathon/lib (ALL *.dll)
+#   - PCANBasic.dll (from build OR vendor lib OR System32 as fallback)
 #   - MSVC runtime DLLs (msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll) from VS Redist
 #
-# Output:
-#   C:\work\StandRemoteUI\bundle_out\stand_bundle.zip
-#   C:\work\StandRemoteUI\bundle_out\manifest.txt
+# Output (relative to repo root):
+#   .\bundle_out\stand_bundle.zip
+#   .\bundle_out\manifest.txt
 #
 # Notes:
-# - Does NOT copy System32 DLLs except PCANBasic.dll (if needed).
+# - Does NOT copy arbitrary System32 DLLs (except PCANBasic.dll as a special-case fallback).
 # - Ignores api-ms-win-*/ext-ms-* entries (api-set, not real files to ship).
 
 $ErrorActionPreference = "Stop"
 
-# === CONFIG ===
+# === REPO ROOT (must be current directory) ===
+$RepoRoot = (Get-Location).Path
+
+# === CONFIG (relative paths) ===
 $Dumpbin = "C:\Program Files\Microsoft Visual Studio\2022\Preview\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\dumpbin.exe"
 
-$ServerExe = "C:\work\StandRemoteUI\server\build\MarathonWS.exe"
-$ClientExe = "C:\work\StandRemoteUI\client\dist\app.exe"
+$ServerExeRel = "server\build\MarathonWS.exe"
+$ClientExeRel = "client\dist\app.exe"
 
-$VcpkgRoot = "C:\vcpkg"
+# Vendor DLLs that MUST be included (all *.dll from this folder)
+$VendorLibDirRel = "server\Stand_Marathon\lib"
 
-$OutDir   = "C:\work\StandRemoteUI\bundle_out"
-$StageDir = Join-Path $OutDir "stage"
-$DistDir  = Join-Path $StageDir "dist"
-$ZipOut   = Join-Path $OutDir "stand_bundle.zip"
-$Manifest = Join-Path $OutDir "manifest.txt"
+$VcpkgRoot = "C:\vcpkg"   # keep absolute (toolchain install)
+
+$OutDirRel   = "bundle_out"
+$StageDirRel = Join-Path $OutDirRel "stage"
+$DistDirRel  = Join-Path $StageDirRel "dist"
+$ZipOutRel   = Join-Path $OutDirRel "stand_bundle.zip"
+$ManifestRel = Join-Path $OutDirRel "manifest.txt"
+
+# === RESOLVED ABSOLUTE PATHS ===
+$ServerExe   = Join-Path $RepoRoot $ServerExeRel
+$ClientExe   = Join-Path $RepoRoot $ClientExeRel
+$VendorLibDir = Join-Path $RepoRoot $VendorLibDirRel
+
+$OutDir   = Join-Path $RepoRoot $OutDirRel
+$StageDir = Join-Path $RepoRoot $StageDirRel
+$DistDir  = Join-Path $RepoRoot $DistDirRel
+$ZipOut   = Join-Path $RepoRoot $ZipOutRel
+$Manifest = Join-Path $RepoRoot $ManifestRel
 
 # === HELPERS ===
-function Assert-PathExists([string]$path, [string]$label) {
-  if (-not (Test-Path $path)) { throw "$label not found: $path" }
+function Assert-PathExists([string]$Path, [string]$Label) {
+  if (-not (Test-Path $Path)) { throw "$Label not found: $Path" }
 }
 
-function Get-DumpbinDependents([string]$exePath) {
-  $out = & $Dumpbin /nologo /dependents $exePath 2>$null
+function Get-DumpbinDependents([string]$ExePath) {
+  $out = & $Dumpbin /nologo /dependents $ExePath 2>$null
   if (-not $out) { return @() }
 
   $dlls = @()
@@ -46,30 +67,30 @@ function Get-DumpbinDependents([string]$exePath) {
   return $dlls | Sort-Object -Unique
 }
 
-function Test-SystemDllName([string]$dll) {
-  $n = $dll.ToLowerInvariant()
+function Test-SystemDllName([string]$Dll) {
+  $n = $Dll.ToLowerInvariant()
   return @(
     "kernel32.dll","ws2_32.dll","user32.dll","gdi32.dll","advapi32.dll","comctl32.dll"
   ) -contains $n
 }
 
-function Test-ApiSetName([string]$dll) {
-  $n = $dll.ToLowerInvariant()
+function Test-ApiSetName([string]$Dll) {
+  $n = $Dll.ToLowerInvariant()
   return ($n.StartsWith("api-ms-win-") -or $n.StartsWith("ext-ms-"))
 }
 
-function Find-FileInDirs([string]$file, [string[]]$dirs) {
-  foreach ($d in $dirs) {
+function Find-FileInDirs([string]$File, [string[]]$Dirs) {
+  foreach ($d in $Dirs) {
     if (-not $d) { continue }
-    $cand = Join-Path $d $file
+    $cand = Join-Path $d $File
     if (Test-Path $cand) { return (Resolve-Path $cand).Path }
   }
   return $null
 }
 
-function Find-FirstInPath([string]$name) {
+function Find-FirstInPath([string]$Name) {
   try {
-    $res = & where.exe $name 2>$null
+    $res = & where.exe $Name 2>$null
     if ($res) {
       foreach ($r in $res) {
         if ($r -and (Test-Path $r)) { return (Resolve-Path $r).Path }
@@ -80,7 +101,6 @@ function Find-FirstInPath([string]$name) {
 }
 
 function Find-MsvcCrtRedistDir() {
-  # Prefer the known VS Preview path; fall back to searching possible roots
   $roots = @(
     "C:\Program Files\Microsoft Visual Studio\2022\Preview\VC\Redist\MSVC",
     "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC",
@@ -94,35 +114,54 @@ function Find-MsvcCrtRedistDir() {
 
     $verDirs = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
     foreach ($v in $verDirs) {
-      # Usually this folder exists:
-      #   <root>\<ver>\x64\Microsoft.VC143.CRT
       $cand = Join-Path $v.FullName "x64\Microsoft.VC143.CRT"
       if (Test-Path $cand) { return $cand }
 
-      # Some installs also have:
-      #   <root>\<ver>\onecore\x64\Microsoft.VC143.CRT
       $cand2 = Join-Path $v.FullName "onecore\x64\Microsoft.VC143.CRT"
       if (Test-Path $cand2) { return $cand2 }
     }
   }
-
   return $null
+}
+
+function Copy-FileToDist([string]$SrcPath, [string]$Note, $CopiedList) {
+  $dst = Join-Path $DistDir (Split-Path $SrcPath -Leaf)
+  Copy-Item $SrcPath $dst -Force
+  $CopiedList.Add("$Note <- $SrcPath") | Out-Null
 }
 
 # === START ===
 Write-Host "make_bundle: start"
+Write-Host "RepoRoot: $RepoRoot"
 
 Assert-PathExists $Dumpbin  "dumpbin.exe"
 Assert-PathExists $ServerExe "Server EXE"
 Assert-PathExists $ClientExe "Client EXE"
+Assert-PathExists $VendorLibDir "Vendor lib dir"
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
+$system32 = "$env:WINDIR\System32"
+$copied  = New-Object System.Collections.Generic.List[string]
+$missing = New-Object System.Collections.Generic.List[string]
+$forced  = New-Object System.Collections.Generic.List[string]
+
 # Copy EXEs
 Copy-Item $ServerExe (Join-Path $DistDir "MarathonWS.exe") -Force
 Copy-Item $ClientExe (Join-Path $DistDir "app.exe") -Force
+
+# === FORCE INCLUDE: vendor DLLs from server/Stand_Marathon/lib ===
+$vendorDlls = Get-ChildItem $VendorLibDir -Filter "*.dll" -File -ErrorAction SilentlyContinue
+if (-not $vendorDlls -or $vendorDlls.Count -eq 0) {
+  throw "Vendor lib dir has no DLLs: $VendorLibDir"
+}
+
+foreach ($f in $vendorDlls) {
+  Copy-FileToDist $f.FullName ("VENDOR " + $f.Name) $copied
+  $forced.Add($f.Name.ToLowerInvariant()) | Out-Null
+}
 
 # Dependency lists (top-level only)
 $serverDeps = Get-DumpbinDependents $ServerExe
@@ -140,29 +179,28 @@ $need = $need | Sort-Object -Unique
 $searchDirs = @(
   (Split-Path $ServerExe -Parent),
   (Split-Path $ClientExe -Parent),
+  $VendorLibDir,
   (Join-Path $VcpkgRoot "installed\x64-windows\bin"),
   (Join-Path $VcpkgRoot "installed\x64-windows\debug\bin")
 )
 
-$system32 = "$env:WINDIR\System32"
-
-$copied = New-Object System.Collections.Generic.List[string]
-$missing = New-Object System.Collections.Generic.List[string]
-
-# Copy required non-system DLLs
+# Copy required non-system DLLs (if not already forced)
 foreach ($dll in $need) {
   if (Test-SystemDllName $dll) { continue }
   if (Test-ApiSetName $dll) { continue }
 
   $dllLower = $dll.ToLowerInvariant()
-  $path = $null
+
+  # already copied from vendor folder (or earlier)
+  if ($forced -contains $dllLower) { continue }
+  if (Test-Path (Join-Path $DistDir $dll)) { continue }
 
   $path = Find-FileInDirs $dll $searchDirs
   if (-not $path) { $path = Find-FirstInPath $dll }
 
-  # Special-case: PCANBasic.dll may be in System32 or in PCAN install directory
+  # Special-case: PCANBasic.dll may be in build/vendor/system32
   if (-not $path -and $dllLower -eq "pcanbasic.dll") {
-    $path = Find-FileInDirs $dll @($system32)
+    $path = Find-FileInDirs $dll @((Split-Path $ServerExe -Parent), $VendorLibDir, $system32)
   }
 
   if (-not $path) {
@@ -175,8 +213,7 @@ foreach ($dll in $need) {
     continue
   }
 
-  Copy-Item $path (Join-Path $DistDir (Split-Path $path -Leaf)) -Force
-  $copied.Add("$dll <- $path") | Out-Null
+  Copy-FileToDist $path $dll $copied
 }
 
 # Force-copy MSVC runtime DLLs from MSVC CRT redist folder (preferred)
@@ -185,8 +222,7 @@ if ($crtDir) {
   foreach ($r in @("msvcp140.dll","vcruntime140.dll","vcruntime140_1.dll")) {
     $p = Join-Path $crtDir $r
     if (Test-Path $p) {
-      Copy-Item $p (Join-Path $DistDir $r) -Force
-      $copied.Add("$r <- $p") | Out-Null
+      Copy-FileToDist $p $r $copied
     } else {
       Write-Warning "Runtime DLL not found in CRT dir: $p"
     }
@@ -198,14 +234,16 @@ if ($crtDir) {
 # Manifest
 $lines = @()
 $lines += "Created: $(Get-Date -Format s)"
+$lines += "RepoRoot: $RepoRoot"
 $lines += "Dumpbin: $Dumpbin"
-$lines += "ServerExe: $ServerExe"
-$lines += "ClientExe: $ClientExe"
+$lines += "ServerExe: $ServerExeRel"
+$lines += "ClientExe: $ClientExeRel"
+$lines += "VendorLibDir: $VendorLibDirRel"
 $lines += ""
 $lines += "Files in dist:"
 Get-ChildItem $DistDir | Sort-Object Name | ForEach-Object { $lines += "  - " + $_.Name }
 $lines += ""
-$lines += "Copied DLLs:"
+$lines += "Copied files:"
 if ($copied.Count -gt 0) { $copied | ForEach-Object { $lines += "  " + $_ } } else { $lines += "  (none)" }
 $lines += ""
 if ($missing.Count -gt 0) {
@@ -222,12 +260,13 @@ if (Test-Path $ZipOut) { Remove-Item $ZipOut -Force }
 Compress-Archive -Path (Join-Path $StageDir "*") -DestinationPath $ZipOut -Force
 
 Write-Host "make_bundle: OK"
-Write-Host "ZIP: $ZipOut"
-Write-Host "Manifest: $Manifest"
+Write-Host "ZIP: $ZipOutRel"
+Write-Host "Manifest: $ManifestRel"
 
 if ($missing.Count -gt 0) {
   Write-Warning "Missing DLLs exist. Check manifest.txt"
 }
-  
 
-# powershell -NoProfile -ExecutionPolicy Bypass -File C:\work\StandRemoteUI\make_bundle.ps1
+# Run:
+#   cd C:\work\StandControl
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\make_bundle.ps1

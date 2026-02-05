@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import Tk, ttk, Text, StringVar, Entry, Frame
+from tkinter.scrolledtext import ScrolledText  
 import json
 import time
 from datetime import datetime
@@ -74,6 +75,7 @@ def init_style(dark=False):
     return style
 
 
+import socketserver, threading, time
 from network import WSClient
 WS_URL = "ws://127.0.0.1:9000"  # при необходимости поменять
 #WS_URL = "ws://192.168.0.19:9000"
@@ -230,6 +232,18 @@ def create_gui():
         msg = " ".join(str(p) for p in parts).strip()
         log_box.insert("end", msg + "\n")
         log_box.see("end")
+
+    last_telemetry = {}
+    telemetry_lock = threading.RLock()
+
+    def _update_telemetry(obj):
+        if not isinstance(obj, dict):
+            return
+        with telemetry_lock:
+            # ключи, которые реально шлёт сервер: Ms, ns, Isd, Isq, Udc и т.д.
+            for k in ("Ms", "ns", "Isd", "Isq", "Udc", "efficiency", "eta", "eff"):
+                if k in obj:
+                    last_telemetry[k] = obj[k]
 
     # Глобальные переменные для CAN данных
     can_rx_data = [StringVar() for _ in range(12)]  # 12 полей для Rx CAN
@@ -400,6 +414,7 @@ def create_gui():
 
 
     def on_message(msg):
+        root.after(0, lambda: ui_log(f"[RX] {msg}"))
         try:
             data = json.loads(msg)
         except json.JSONDecodeError:
@@ -718,9 +733,7 @@ def create_gui():
     def on_error(msg):
         root.after(0, lambda: ui_log(f"[ERR] {msg}"))
 
-    root.bind("<Up>", on_arrow_key)
-    root.bind("<Down>", on_arrow_key)
-
+    # ---------------- UI layout ----------------
     # Вкладки
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
@@ -851,6 +864,32 @@ def create_gui():
 
     notebook.enable_traversal()
 
+    # --- ЖУРНАЛ ---
+    # панель кнопок
+    log_toolbar = ttk.Frame(log_frame)
+    log_toolbar.pack(fill="x", padx=10, pady=(10, 0))
+
+    def clear_log():
+        log_text.delete("1.0", "end")
+
+    def copy_log():
+        root.clipboard_clear()
+        root.clipboard_append(log_text.get("1.0", "end"))
+        root.update()  # чтобы буфер обмена сохранился после закрытия окна
+
+    ttk.Button(log_toolbar, text="Очистить", command=clear_log).pack(side="left")
+    ttk.Button(log_toolbar, text="Копировать", command=copy_log).pack(side="left", padx=6)
+
+    # само поле лога со скроллом
+    log_text = ScrolledText(log_frame, height=18, wrap="word", font=("Consolas", 10))
+    log_text.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # функция логирования с таймштампом
+    def ui_log(msg: str):
+        ts = time.strftime("%H:%M:%S")
+        log_text.insert("end", f"[{ts}] {msg.strip()}\n")
+        log_text.see("end")
+    
     # Вкладка 1
     main_inner = ttk.Frame(main_frame)
     main_inner.pack(fill="both", expand=True)
@@ -940,19 +979,39 @@ def create_gui():
     control_frame = ttk.Frame(controls_container)
     control_frame.pack(padx=10, pady=10, fill="x")
 
-    # ====== Блок "Токи (Id/Iq)" ======
-    currents_frame = ttk.LabelFrame(main_inner, text="Currents")
-    currents_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+    # Создадим переменные токов/флага заранее (нужны для варианта A)
+    currents_frame = ttk.LabelFrame(main_inner, text="Токи (Id/Iq)")
+    currents_frame.place(x=10, y=120, width=340, height=120)
 
     En_Is_var = tk.IntVar(value=1)
     Id_var = tk.StringVar(value="-0.5")
     Iq_var = tk.StringVar(value="0.0")
 
     ttk.Label(currents_frame, text="Id [A]").grid(row=1, column=0, sticky="e", padx=6, pady=6)
-    ttk.Entry(currents_frame, width=10, textvariable=Id_var).grid(row=1, column=1, sticky="w")
+    id_entry = ttk.Entry(currents_frame, width=10, textvariable=Id_var)
+    id_entry.grid(row=1, column=1, sticky="w")
 
     ttk.Label(currents_frame, text="Iq [A]").grid(row=1, column=2, sticky="e", padx=6, pady=6)
-    ttk.Entry(currents_frame, width=10, textvariable=Iq_var).grid(row=1, column=3, sticky="w")
+    iq_entry = ttk.Entry(currents_frame, width=10, textvariable=Iq_var)
+    iq_entry.grid(row=1, column=3, sticky="w")
+
+    # >>> ВАРИАНТ А: функция, которая применяет значения агента к GUI-полям
+    def apply_agent_currents(Isd: float, Isq: float, En_rem: bool):
+        try:
+            En_rem_var.set(1 if En_rem else 0)
+            Id_var.set(f"{Isd:.3f}")
+            Iq_var.set(f"{Isq:.3f}")
+        except Exception:
+            pass
+
+    ttk.Button(control_frame, text="▶ Старт", width=15,
+               command=lambda: client.send_cmd_threadsafe("Init")).pack(side="left", padx=5)
+    ttk.Button(control_frame, text="■ Стоп", width=15,
+               command=lambda: client.send_cmd_threadsafe("Stop")).pack(side="left", padx=5)
+    ttk.Button(control_frame, text="↺ Сброс", width=15,
+               command=lambda: client.send_cmd_threadsafe("Read2")).pack(side="left", padx=5)
+    ttk.Button(control_frame, text="💾 Сохранить", width=15,
+               command=lambda: client.send_cmd_threadsafe("SaveCfg")).pack(side="left", padx=5)
 
     # ====== Блок "Лимиты" ======
     limits_frame = ttk.LabelFrame(main_inner, text="Limits")
@@ -1018,24 +1077,17 @@ def create_gui():
         entry.grid(row=i, column=1, padx=5, pady=5)
         entry_vars[param] = var
 
-    # CAN - используем заранее созданные переменные
+    # CAN
     can_frame = ttk.LabelFrame(main_inner, text="Tx / Rx CAN")
-    can_frame.grid(     row=3, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
-    
-    # Заголовки
+    can_frame.place(x=10, y=390, width=710, height=140)
     headers = ["id"] + [f"data{i}" for i in range(8)] + ["len", "flags", "ts"]
     for col, header in enumerate(headers):
         ttk.Label(can_frame, text=header, anchor="center", width=8).grid(row=0, column=col+1, padx=2, pady=(0, 5))
-    
     ttk.Label(can_frame, text="Tx:").grid(row=1, column=0, sticky="e", padx=3)
     ttk.Label(can_frame, text="Rx:").grid(row=2, column=0, sticky="e", padx=3)
-    
-    # Поля Tx
     for col in range(12):
-        entry = Entry(can_frame, textvariable=can_tx_data[col], width=8, justify="center", state="readonly")
-        entry.grid(row=1, column=col+1, padx=2, pady=2)
-    
-    # Поля Rx
+        Entry(can_frame, textvariable=can_tx_data[col], width=8, justify="center", state="readonly")\
+            .grid(row=1, column=col+1, padx=2, pady=2)
     for col in range(12):
         entry = Entry(can_frame, textvariable=can_rx_data[col], width=8, justify="center", state="readonly")
         entry.grid(row=2, column=col+1, padx=2, pady=2)
@@ -1253,6 +1305,79 @@ def create_gui():
         ax6_right.relim(); ax6_right.autoscale_view()
     canvas_maps.draw_idle()
 
+    # ------- RPC-мост (агент ↔ GUI) -------
+    class AgentRPCServer(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        def __init__(self, addr, handler, ws_client):
+            super().__init__(addr, handler)
+            self.ws_client = ws_client
+
+    class AgentRPCHandler(socketserver.StreamRequestHandler):
+        def reply(self, obj):
+            self.wfile.write((json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8"))
+
+        def handle(self):
+            while True:
+                line = self.rfile.readline()
+                if not line:
+                    break
+                try:
+                    req = json.loads(line.decode("utf-8"))
+                except Exception as e:
+                    self.reply({"ok": False, "error": f"bad json: {e}"})
+                    continue
+
+                cmd = req.get("cmd")
+                try:
+                    if cmd == "start":
+                        fut = self.server.ws_client.send_cmd_threadsafe("Init"); fut.result(timeout=1)
+                        self.reply({"ok": True})
+                    elif cmd == "stop":
+                        fut = self.server.ws_client.send_cmd_threadsafe("Stop"); fut.result(timeout=1)
+                        self.reply({"ok": True})
+                    elif cmd == "read2":
+                        fut = self.server.ws_client.send_cmd_threadsafe("Read2"); fut.result(timeout=1)
+                        time.sleep(0.05)
+                        with telemetry_lock:
+                            self.reply({"ok": True, "telemetry": dict(last_telemetry)})
+                    elif cmd == "set_currents":
+                        Isd = float(req.get("Isd", 0.0)); Isq = float(req.get("Isq", 0.0))
+                        En_rem = bool(req.get("En_rem", True))
+                        payload = {"cmd": "SendTorque", "En_rem": En_rem, "Isd": Isd, "Isq": Isq, "src": "rl-agent"}
+                        fut = self.server.ws_client.send_json_threadsafe(payload); fut.result(timeout=1)
+                        # >>> обновим GUI-поля и лог из главного потока:
+                        root.after(0, lambda: (
+                            apply_agent_currents(Isd, Isq, En_rem),
+                            ui_log(f"[AGENT] SendTorque Isd={Isd:.3f} Iq={Isq:.3f} En_rem={En_rem}")
+                        ))
+                        self.reply({"ok": True, "echo": {"Isd": Isd, "Isq": Isq, "En_rem": En_rem}})
+                    elif cmd == "snapshot":
+                        with telemetry_lock:
+                            self.reply({"ok": True, "telemetry": dict(last_telemetry)})
+                    else:
+                        self.reply({"ok": False, "error": f"unknown cmd: {cmd}"})
+                except Exception as e:
+                    self.reply({"ok": False, "error": str(e)})
+
+    # Запускаем WS-клиент
+    client = WSClient(WS_URL, on_message, on_status, on_error)
+    client.start()
+    # RPC сервер агента
+    def start_agent_bridge(ws_client, host="127.0.0.1", port=8765):
+        srv = AgentRPCServer((host, port), AgentRPCHandler, ws_client)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        ui_log(f"[AgentRPC] listening on {host}:{port}")
+        return srv
+    agent_bridge = start_agent_bridge(client, port=8765)
+
+    # Лог, бинды и выход
+    root.protocol("WM_DELETE_WINDOW", lambda: (client.stop(), root.destroy()))
+    root.bind("<Up>", on_arrow_key)
+    root.bind("<Down>", on_arrow_key)
+
+    # Вкладка 3: лог
+    #log_box.pack(in_=log_frame, fill="both", padx=10, pady=10, expand=True)
 
     root.mainloop()
 
